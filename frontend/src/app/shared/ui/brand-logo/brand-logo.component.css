@@ -1,0 +1,16 @@
+/* The two supplied wordmarks have been trimmed to real content and given
+ * transparent backgrounds. Layout no longer needs absolute positioning,
+ * offsets or zoom factors tied to a particular export canvas. */
+:host { display: inline-flex; width: min(100%, 242px); max-width: 100%; min-width: 0; vertical-align: middle; }
+:host(.logo-hero) { width: min(100%, 430px); }
+:host(.logo-symbol) { width: 48px; }
+
+.ll-brand-logo { display: block; width: 100%; aspect-ratio: 1374 / 454; }
+.ll-brand-logo img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.ll-brand-logo-symbol { aspect-ratio: 1; }
+
+.brand-for-light { display: none !important; }
+:host-context([data-theme="light"]) .brand-for-light { display: block !important; }
+:host-context([data-theme="light"]) .brand-for-dark { display: none !important; }
+:host(.logo-inverse) .brand-for-light { display: none !important; }
+:host(.logo-inverse) .brand-for-dark { display: block !important; }

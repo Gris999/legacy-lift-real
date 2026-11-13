@@ -1,0 +1,14 @@
+:host { display:contents; }
+/* Feature-owned styles for dialogs (no feature CSS in global stylesheet). */
+.help-text { display: flex; align-items: flex-start; gap: 7px; line-height: 1.5; margin: 0; }
+@media (max-width: 400px) {
+  .dialog-actions { flex-wrap: wrap; }
+  .dialog-actions .ll-btn { flex: 1; }
+}
+.dialog-description { color: var(--color-muted); font-size: 13px; line-height: 1.65; margin: 0 0 23px; }
+.dialog-form { display: grid; gap: 18px; }
+.dialog-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px; }
+.help-steps { color: var(--color-text-secondary); padding-left: 25px; display: grid; gap: 12px; }
+.help-steps li { padding-left: 3px; }
+.help-steps li::marker { color: var(--color-accent); font-family: 'JetBrains Mono',monospace; }
+.help-callout { display: flex; align-items: flex-start; gap: 10px; color: var(--color-text-secondary); border: 1px solid var(--color-border); background: var(--color-shade); padding: 12px; border-radius: var(--radius-sm); font-size: 12px; }

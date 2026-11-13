@@ -1,0 +1,38 @@
+{
+  "name": "legacylift-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "ng serve --host 0.0.0.0 --port 4200 --proxy-config proxy.conf.json",
+    "build": "ng build --configuration production",
+    "build:dev": "ng build --configuration development",
+    "check:ui": "node scripts/check-ui.mjs",
+    "sync:branding": "node scripts/sync-branding.mjs",
+    "prestart": "npm run sync:branding",
+    "prebuild": "npm run sync:branding",
+    "prebuild:dev": "npm run sync:branding",
+    "check:branding": "node scripts/check-branding.mjs",
+    "check:architecture": "node scripts/check-architecture.mjs"
+  },
+  "dependencies": {
+    "@angular/common": "^22.2.0",
+    "@angular/compiler": "^22.2.0",
+    "@angular/core": "^22.2.0",
+    "@angular/forms": "^22.2.0",
+    "@angular/platform-browser": "^22.2.0",
+    "@angular/router": "^22.2.0",
+    "marked": "^15.0.0",
+    "rxjs": "^7.8.0",
+    "tslib": "^2.8.0",
+    "zone.js": "~0.16.0"
+  },
+  "devDependencies": {
+    "@angular/build": "^22.2.0",
+    "@angular/cli": "^22.2.0",
+    "@angular/compiler-cli": "^22.2.0",
+    "typescript": "~6.0.3"
+  },
+  "engines": {
+    "node": "^22.22.3 || ^24.15.0 || ^26.0.0"
+  }
+}

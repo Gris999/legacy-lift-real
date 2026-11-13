@@ -1,0 +1,61 @@
+<main class="auth-layout">
+  <section class="auth-story" aria-label="Acerca de LegacyLift">
+    <div class="brand brand-large" aria-label="LegacyLift — Modernization Studio">
+      <ll-brand-logo size="hero" [inverse]="true"/>
+      <span class="brand-caption">MODERNIZATION STUDIO</span>
+    </div>
+    <div class="auth-story-content">
+      <span class="eyebrow"><span class="eyebrow-dot"></span> MODERNIZATION STUDIO</span>
+      <h1>Entiende el legado.<br><em>Transforma con confianza.</em></h1>
+      <p>Del código heredado a un plan de modernización claro, trazable y bajo tu control.</p>
+      <div class="story-flow" aria-hidden="true">
+        <span><ll-icon name="inventory_2"/> Importar</span><ll-icon name="arrow_forward" size="sm"/>
+        <span><ll-icon name="account_tree"/> Comprender</span><ll-icon name="arrow_forward" size="sm"/>
+        <span><ll-icon name="verified"/> Verificar</span>
+      </div>
+    </div>
+    <div class="auth-story-foot"><ll-icon name="lock" size="sm"/> Código original intacto. Decisiones siempre humanas.</div>
+  </section>
+
+  <section class="auth-form-area" aria-label="Acceso a LegacyLift">
+    <button class="theme-action icon-action auth-theme-action" type="button" (click)="vm.toggleTheme()"
+      [attr.aria-label]="vm.theme === 'dark' ? 'Activar tema claro' : 'Activar tema oscuro'"
+      [attr.title]="vm.theme === 'dark' ? 'Tema claro' : 'Tema oscuro'">
+      <ll-icon [name]="vm.theme === 'dark' ? 'light_mode' : 'dark_mode'"/>
+    </button>
+    <div class="auth-panel">
+      <div class="auth-form-head">
+        <span class="eyebrow">TU WORKSPACE</span>
+        <h2>{{vm.registerMode?'Crea tu cuenta':'Bienvenido de nuevo'}}</h2>
+        <p>{{vm.registerMode?'Empieza a modernizar con un espacio de trabajo personal.':'Inicia sesión para continuar con tus proyectos.'}}</p>
+      </div>
+      <ll-notice *ngIf="vm.error" tone="error" [message]="vm.error" (dismissed)="vm.dismiss()"/>
+      <form class="auth-form" (ngSubmit)="vm.login()">
+        <ng-container *ngIf="vm.registerMode">
+          <div class="form-field"><label for="displayName">Nombre visible</label>
+            <input id="displayName" name="displayName" autocomplete="name" class="input" [(ngModel)]="vm.displayName" minlength="2" maxlength="100" required placeholder="Cómo quieres que te llamemos"></div>
+          <div class="form-field" *ngIf="vm.bootstrapRequired"><label for="bootstrapSecret">Código de instalación</label>
+            <input id="bootstrapSecret" name="bootstrapSecret" type="password" autocomplete="off" class="input" [(ngModel)]="vm.bootstrapSecret" placeholder="Código definido por el administrador" required>
+            <small>Solo se solicita para registrar la primera cuenta.</small></div>
+        </ng-container>
+        <div class="form-field"><label for="email">Correo electrónico</label>
+          <input id="email" type="email" name="email" autocomplete="email" class="input" placeholder="tu@correo.com" [(ngModel)]="vm.email" required></div>
+        <div class="form-field"><div class="field-top"><label for="password">Contraseña</label></div>
+          <div class="password-field"><input id="password" [type]="vm.passwordVisible?'text':'password'" name="password" [attr.autocomplete]="vm.registerMode?'new-password':'current-password'" class="input" [placeholder]="vm.registerMode?'Mínimo 12 caracteres':'Introduce tu contraseña'" [(ngModel)]="vm.password" [attr.minlength]="vm.registerMode ? 12 : null" required>
+            <button type="button" class="password-toggle" [attr.aria-label]="vm.passwordVisible?'Ocultar contraseña':'Mostrar contraseña'" [attr.aria-pressed]="vm.passwordVisible" (click)="vm.passwordVisible=!vm.passwordVisible"><ll-icon [name]="vm.passwordVisible?'visibility_off':'visibility'"/></button></div>
+        </div>
+        <button llButton variant="primary" [block]="true" type="submit" [disabled]="vm.busy || !vm.password || !vm.email || (vm.registerMode && (vm.displayName.trim().length<2 || (vm.bootstrapRequired && !vm.bootstrapSecret)))">
+          <ll-icon [name]="vm.busy?'progress_activity':vm.registerMode?'person_add':'login'"/>
+          {{vm.busy?'Procesando...':vm.registerMode?'Crear cuenta':'Iniciar sesión'}}
+          <ll-icon name="arrow_forward" size="sm"/>
+        </button>
+      </form>
+      <div class="auth-switch" *ngIf="vm.registrationOpen">
+        {{vm.registerMode?'¿Ya tienes una cuenta?':'¿Primera vez en LegacyLift?'}}
+        <button type="button" class="text-action" (click)="vm.registerMode=!vm.registerMode;vm.passwordVisible=false;vm.dismiss()">{{vm.registerMode?'Inicia sesión':'Crear una cuenta'}}</button>
+      </div>
+      <div class="auth-switch auth-switch-muted" *ngIf="!vm.registrationOpen"><ll-icon name="info" size="sm"/> El registro está cerrado. Si aún no tienes cuenta, consulta al administrador.</div>
+    </div>
+    <footer class="auth-footer">LEGACYLIFT AI · CONTROLLED MODERNIZATION</footer>
+  </section>
+</main>

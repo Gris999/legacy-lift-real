@@ -1,0 +1,9 @@
+<article class="ll-metric panel">
+      <div class="ll-metric-head"><span>{{title}}</span><span class="ll-metric-icon"><ll-icon [name]="icon"/></span></div>
+      <div class="ll-metric-value" [class.ll-metric-value-compact]="compact">{{value}}<small *ngIf="suffix">{{suffix}}</small></div>
+      <div *ngIf="progress !== null" class="ll-progress" role="progressbar" [attr.aria-label]="title"
+        [attr.aria-valuenow]="progress" aria-valuemin="0" aria-valuemax="100">
+        <span [style.width.%]="progress"></span>
+      </div>
+      <div class="ll-metric-detail">{{detail}}</div>
+    </article>

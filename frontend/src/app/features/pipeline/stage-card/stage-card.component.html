@@ -1,0 +1,10 @@
+<button type="button" class="ll-stage" [class.is-active]="active" [class.is-complete]="stage.status === 'completed'"
+      (click)="selected.emit(stage.id)" [attr.aria-current]="active ? 'step' : null"
+      [attr.aria-label]="stage.label + '. ' + stage.description + '. ' + stage.status">
+      <span class="ll-stage-index" aria-hidden="true"><ll-icon *ngIf="stage.status === 'completed'; else stepNumber" name="check"/>
+        <ng-template #stepNumber>{{stage.index}}</ng-template>
+      </span>
+      <span class="ll-stage-info"><strong>{{stage.label}}</strong><small>{{stage.description}}</small></span>
+      <ll-status-badge [status]="stage.status"/>
+      <ll-icon name="chevron_right" size="sm"/>
+    </button>

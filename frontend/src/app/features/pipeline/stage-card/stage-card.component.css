@@ -1,0 +1,19 @@
+/* Encapsulated styling for stage-card. */
+.ll-stage { width: 100%; display: flex; align-items: center; gap: 13px; min-height: 63px; padding: 11px 12px; background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm); text-align: left; color: var(--color-text-secondary); transition: background var(--transition-fast), border-color var(--transition-fast); }
+.ll-stage:hover { background: var(--color-shade); border-color: var(--color-border); }
+.ll-stage.is-active { background: var(--color-accent-surface); border-color: var(--color-accent-border); color: var(--color-text); }
+.ll-stage-index { flex: none; width: 35px; height: 35px; display: grid; place-items: center; border-radius: 10px; color: var(--color-text-secondary); background: var(--color-shade-soft); border: 1px solid var(--color-border); font: 650 11px 'JetBrains Mono',monospace; }
+.ll-stage.is-active .ll-stage-index, .ll-stage.is-complete .ll-stage-index { color: var(--color-accent); border-color: var(--color-accent-border); background: var(--color-accent-surface); }
+.ll-stage-info { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.ll-stage-info strong { font-size: 13px; line-height: 1.2; }
+.ll-stage-info small { font-size: 11px; color: var(--color-muted); }
+.ll-stage>ll-icon:last-child { color: var(--color-muted); }
+.ll-stage:hover { background: var(--color-hover); border-color: var(--color-border); }
+.ll-stage.is-active { color: var(--color-text); background: var(--color-accent-surface); border-color: var(--color-accent-border); }
+.ll-stage-index { background: var(--color-shade-soft); border-color: var(--color-border); }
+.ll-stage.is-active .ll-stage-index { color: var(--color-accent); background: var(--color-surface-raised); border-color: var(--color-accent-border); }
+
+@media (max-width:630px) {
+  .ll-stage { gap:8px; }
+  .ll-stage ll-status-badge { max-width:36px; overflow:hidden; }
+}

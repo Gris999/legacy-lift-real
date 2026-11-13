@@ -1,0 +1,10 @@
+:host { display:block; min-width:0; }
+/* Feature-owned styles for pipeline (no feature CSS in global stylesheet). */
+.phase-group + .phase-group { margin-top: 19px; }
+.phase-group-heading { display: flex; justify-content: space-between; gap: 10px; color: var(--color-muted); font: 650 10px 'JetBrains Mono',monospace; letter-spacing: .06em; border-bottom: 1px solid var(--color-border); padding: 0 4px 11px; margin-bottom: 5px; }
+.phase-group-heading span:last-child { font-size: 10px; letter-spacing: 0; }
+
+.pipeline-panel { padding:24px; }
+@media (max-width:630px) {
+.pipeline-panel {padding:18px;}
+}

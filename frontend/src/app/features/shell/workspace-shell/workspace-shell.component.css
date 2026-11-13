@@ -1,0 +1,8 @@
+:host { display:block; min-height:100dvh; }
+/* Feature-owned styles for shell (no feature CSS in global stylesheet). */
+.app-shell { display: flex; position: relative; z-index: 1; min-height: 100dvh; }
+.mobile-backdrop { display: none; }
+.shell-body { min-width: 0; flex: 1; }
+@media (max-width: 800px) {
+  .mobile-backdrop { display: block; position: fixed; inset: 0; background: var(--color-overlay); z-index: 55; }
+}

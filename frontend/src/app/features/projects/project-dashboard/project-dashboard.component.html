@@ -1,0 +1,43 @@
+<main class="page-content">
+      <header class="page-header">
+        <div><div class="eyebrow">{{vm.selected?'PROYECTO / '+vm.selected.system_name:'WORKSPACE / BIENVENIDA'}}</div>
+          <h1>{{vm.selected?.name || 'Tus proyectos'}}<span class="header-accent">.</span></h1>
+          <p>{{vm.selected?'Gestiona la fuente, revisa la evidencia y avanza a la próxima fase.':'Importa tu primer sistema y empieza con un análisis controlado.'}}</p></div>
+        <div class="page-actions" *ngIf="vm.selected">
+          <button llButton variant="secondary" type="button" (click)="vm.editProject()"><ll-icon name="edit" size="sm"/> Editar proyecto</button>
+          <button llButton variant="secondary" type="button" (click)="vm.download()"><ll-icon name="download" size="sm"/> Exportar</button>
+        </div>
+      </header>
+
+      <ll-notice *ngIf="vm.error" tone="error" [message]="vm.error" (dismissed)="vm.dismiss()"/>
+      <ll-notice *ngIf="vm.notice" [message]="vm.notice" (dismissed)="vm.dismiss()"/>
+
+      <ng-container *ngIf="vm.selected as p; else emptyState">
+        <section class="metrics-grid" aria-label="Indicadores del proyecto">
+          <ll-metric-card title="FASES COMPLETADAS" [value]="vm.completedCount.toString()" suffix="/ 7" icon="checklist" [progress]="vm.completedCount/7*100" [detail]="vm.completedCount===7?'Proceso completado':'Continúa con la siguiente etapa'"/>
+          <ll-metric-card title="SNAPSHOT ACTIVO" [value]="vm.hasSource?'Listo':'Pendiente'" [compact]="true" icon="inventory_2" [detail]="vm.hasSource?'SHA-256 · '+p.snapshot_hash?.substring(0,12)+'…':'Importa ZIP o GitHub'"/>
+          <ll-metric-card title="PROVEEDOR IA" [value]="p.provider==='codex'?'Codex':p.provider==='claude'?'Claude':'Demo local'" [compact]="true" icon="neurology" [detail]="p.provider==='demo'?'Sin consumo de tokens':'Configurado en el servidor'"/>
+          <ll-metric-card title="MIGRACIÓN" [value]="p.migration_decision==='approved'?'Aprobada':p.migration_decision==='rejected'?'Rechazada':vm.isAnyRunning?'Ejecutando':'Pendiente'" [compact]="true" icon="verified_user" [detail]="p.plan_approved===1?'Plan aprobado':'Requiere aprobación humana'"/>
+        </section>
+
+        <div class="workspace-grid">
+          <div class="workspace-main-column">
+            <ll-source-panel/>
+
+            <ll-pipeline-panel/>
+          </div>
+
+          <aside class="workspace-side-column" aria-label="Detalle y decisiones">
+            <ll-phase-actions/>
+</aside>
+        </div>
+
+        <ll-artifacts-panel/>
+      </ng-container>
+
+      <ng-template #emptyState><div class="welcome-empty panel"><div class="welcome-icon"><ll-icon name="rocket_launch" size="lg"/></div>
+        <span class="eyebrow">COMIENZA AQUÍ</span><h2>Un sistema legacy. Un plan claro.</h2>
+        <p>Crea un proyecto para importar código, comprender sus dependencias y planificar una modernización segura.</p>
+        <button llButton variant="primary" type="button" (click)="vm.showCreate=true"><ll-icon name="add"/> Crear mi primer proyecto</button></div></ng-template>
+      <footer class="page-footer"><span>LEGACYLIFT AI · Sprint 1</span><span>Understand first. Modernize safely.</span></footer>
+    </main>

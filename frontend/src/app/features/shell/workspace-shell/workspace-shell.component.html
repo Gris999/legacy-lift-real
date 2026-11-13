@@ -1,0 +1,8 @@
+<div class="app-shell">
+  <div *ngIf="vm.mobileNavOpen" class="mobile-backdrop" (click)="vm.mobileNavOpen=false" aria-hidden="true"></div>
+  <ll-project-sidebar/>
+  <div class="shell-body" id="workspace-top">
+    <ll-workspace-topbar/>
+    <ll-project-dashboard/>
+  </div>
+</div>

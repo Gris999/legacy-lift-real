@@ -1,0 +1,14 @@
+<section class="panel pipeline-panel" aria-label="Pipeline de modernización">
+              <ll-section-heading eyebrow="02 / ORQUESTACIÓN" title="Pipeline de modernización" description="Cada fase genera evidencia para la siguiente. Selecciona un paso para ver sus detalles.">
+                <span class="section-hint">7 fases</span>
+              </ll-section-heading>
+              <div class="phase-group"><div class="phase-group-heading"><span>ANÁLISIS</span><span>Sprint 2</span></div>
+                <ll-stage-card *ngFor="let stage of vm.stages.slice(0,3)" [stage]="stage" [active]="vm.stageId===stage.id" (selected)="vm.chooseStage($event)"/>
+              </div>
+              <div class="phase-group"><div class="phase-group-heading"><span>PLANIFICACIÓN</span><span>Sprint 3</span></div>
+                <ll-stage-card *ngFor="let stage of vm.stages.slice(3,5)" [stage]="stage" [active]="vm.stageId===stage.id" (selected)="vm.chooseStage($event)"/>
+              </div>
+              <div class="phase-group"><div class="phase-group-heading"><span>TRANSFORMACIÓN Y CONTROL</span><span>Sprint 4</span></div>
+                <ll-stage-card *ngFor="let stage of vm.stages.slice(5,7)" [stage]="stage" [active]="vm.stageId===stage.id" (selected)="vm.chooseStage($event)"/>
+              </div>
+            </section>

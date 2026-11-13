@@ -1,0 +1,57 @@
+<section class="panel source-panel" *ngIf="vm.selected as p" aria-label="Importación de código">
+              <ll-section-heading eyebrow="01 / INGESTA" title="Código fuente" description="Importa tu sistema sin modificar el repositorio original.">
+                <ll-status-badge [status]="vm.hasSource?'completed':vm.ingestRunning?'running':'pending'" [label]="vm.hasSource?'Snapshot listo':vm.ingestRunning?'Importando':'Sin fuente'"/>
+              </ll-section-heading>
+
+              <div class="source-summary" *ngIf="vm.hasSource"><span class="source-summary-icon"><ll-icon name="folder_zip" size="lg"/></span>
+                <div><strong>{{p.source_filename || 'Código importado'}}</strong><small>SHA-256: {{p.snapshot_hash?.substring(0,24)}}…</small></div>
+                <ll-status-badge status="active"/>
+              </div>
+              <div class="import-empty" *ngIf="!vm.hasSource"><div class="import-empty-icon"><ll-icon name="cloud_upload" size="lg"/></div>
+                <h3>Tu código, el punto de partida</h3><p>Sube un archivo ZIP o conecta GitHub. Cada importación crea un snapshot independiente.</p></div>
+
+              <div class="source-action-row">
+                <input #zipInput type="file" hidden accept=".zip,application/zip" (change)="vm.upload($event)" aria-label="Archivo ZIP del código fuente"/>
+                <button llButton variant="primary" type="button" (click)="zipInput.click()" [disabled]="vm.uploading || vm.busy || vm.isAnyRunning || vm.ingestRunning"><ll-icon name="upload_file"/> {{vm.hasSource?'Importar otro ZIP':'Seleccionar ZIP'}}</button>
+                <button llButton variant="secondary" type="button" (click)="vm.loadDemo()" [disabled]="vm.uploading || vm.ingestRunning"><ll-icon name="science"/> Usar proyecto de ejemplo</button>
+              </div>
+              <p class="help-text"><ll-icon name="info" size="sm"/> ZIP de hasta 12 MB y 300 archivos. Evita incluir secretos o credenciales.</p>
+
+              <div class="source-subsection" *ngIf="vm.githubConfigured">
+                <div class="source-subsection-heading"><div><ll-icon name="code"/><strong>GitHub</strong></div>
+                  <ll-status-badge [status]="vm.githubLogin?'connected':'pending'" [label]="vm.githubLogin?'Conectado':'Sin conectar'"/>
+                </div>
+                <div *ngIf="vm.githubLogin; else githubDisconnected" class="github-connected">
+                  <p>Cuenta <strong>{{vm.githubLogin}}</strong> · {{vm.githubRepos.length}} repositorios disponibles</p>
+                  <div class="github-repo-form"><label class="sr-only" for="githubRepo">Repositorio</label>
+                    <select class="input" id="githubRepo" [(ngModel)]="vm.selectedRepo">
+                      <option value="">Selecciona un repositorio</option>
+                      <option *ngFor="let r of vm.githubRepos" [value]="r.full_name">{{r.full_name}}{{r.private?' · privado':''}}</option>
+                    </select>
+                    <button llButton variant="primary" type="button" (click)="vm.importRepository()" [disabled]="!vm.selectedRepo || vm.uploading || vm.ingestRunning"><ll-icon name="download" size="sm"/> Importar</button>
+                  </div>
+                  <button type="button" class="text-action danger-link" (click)="vm.disconnectGithub()">Desconectar GitHub</button>
+                </div>
+                <ng-template #githubDisconnected><p class="source-subtext">Autoriza tu cuenta para importar repositorios públicos o privados.</p>
+                  <button llButton variant="secondary" type="button" (click)="vm.connectGithub()"><ll-icon name="link"/> Conectar GitHub</button></ng-template>
+              </div>
+
+              <div class="source-subsection" *ngIf="vm.ingestJobs.length" aria-label="Progreso de importaciones">
+                <div class="source-subsection-heading"><div><ll-icon name="sync"/><strong>Actividad reciente</strong></div><span class="section-hint">Últimos cinco trabajos</span></div>
+                <article class="job-row" *ngFor="let j of vm.ingestJobs.slice(0,5)">
+                  <div class="job-row-head"><div><strong>{{j.kind==='github'?'Repositorio GitHub':'Archivo ZIP'}}</strong><small>{{j.stage}}</small></div><ll-status-badge [status]="j.status"/></div>
+                  <div class="ll-progress" role="progressbar" [attr.aria-label]="'Progreso de '+j.kind" [attr.aria-valuenow]="j.progress" aria-valuemin="0" aria-valuemax="100"><span [style.width.%]="j.progress"></span></div>
+                  <p *ngIf="j.error" class="inline-error">{{j.error}}</p>
+                  <div class="job-actions"><button *ngIf="j.status==='failed'||j.status==='canceled'" llButton variant="secondary" size="sm" type="button" (click)="vm.retryJob(j.id)"><ll-icon name="refresh" size="sm"/> Reintentar</button>
+                    <button *ngIf="j.status==='queued'" llButton variant="ghost" size="sm" type="button" (click)="vm.cancelJob(j.id)">Cancelar</button></div>
+                </article>
+              </div>
+              <details class="snapshot-details" *ngIf="vm.hasSource && vm.snapshots.length">
+                <summary><ll-icon name="history"/> Historial de versiones <span class="snapshot-count">{{vm.snapshots.length}}</span><ll-icon name="expand_more" size="sm"/></summary>
+                <div class="snapshot-list"><div class="snapshot-row" *ngFor="let snap of vm.snapshots">
+                  <div class="snapshot-info"><strong>{{snap.origin_reference}}</strong><small>{{snap.file_count}} archivos · {{snap.source_hash.slice(0,10)}}… · {{vm.readableDate(snap.created_at)}}</small></div>
+                  <ll-status-badge *ngIf="snap.id===p.active_snapshot_id" status="active"/>
+                  <button *ngIf="snap.id!==p.active_snapshot_id" llButton variant="ghost" size="sm" type="button" (click)="vm.activateSnapshot(snap.id)" [disabled]="vm.busy || vm.isAnyRunning || vm.ingestRunning">Activar</button>
+                </div></div>
+              </details>
+            </section>

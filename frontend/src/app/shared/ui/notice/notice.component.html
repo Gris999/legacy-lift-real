@@ -1,0 +1,5 @@
+<div class="ll-notice" [class.ll-notice-error]="tone === 'error'" [attr.role]="tone === 'error' ? 'alert' : 'status'" aria-live="polite">
+    <ll-icon [name]="tone === 'error' ? 'error' : 'check_circle'"/>
+    <span>{{message}}</span>
+    <button type="button" class="ll-notice-close" (click)="dismissed.emit()" aria-label="Descartar mensaje"><ll-icon name="close"/></button>
+  </div>

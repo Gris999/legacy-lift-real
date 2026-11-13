@@ -1,0 +1,2 @@
+/* Root coordinates features; no page-level styling. */
+:host { display: block; min-height: 100dvh; }

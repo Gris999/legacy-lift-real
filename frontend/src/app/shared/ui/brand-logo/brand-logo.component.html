@@ -1,0 +1,10 @@
+<span class="ll-brand-logo" [class.ll-brand-logo-symbol]="variant === 'symbol'" role="img" aria-label="LegacyLift">
+  <ng-container *ngIf="variant === 'full'; else symbolImages">
+    <img class="brand-for-dark" src="/branding/custom/logo-dark.webp" alt="" decoding="async" />
+    <img class="brand-for-light" src="/branding/custom/logo-light.webp" alt="" decoding="async" />
+  </ng-container>
+  <ng-template #symbolImages>
+    <img class="brand-for-dark" src="/branding/official/symbol-dark.webp" alt="" decoding="async" />
+    <img class="brand-for-light" src="/branding/official/symbol-light.webp" alt="" decoding="async" />
+  </ng-template>
+</span>

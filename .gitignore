@@ -1,0 +1,13 @@
+.env
+**/__pycache__/
+**/.pytest_cache/
+**/.venv/
+node_modules/
+frontend/dist/
+data/
+backend/data/
+*.pyc
+.DS_Store
+
+# Copias sincronizadas de los recursos oficiales; fuente: Proyecto-Software-I/frontend
+frontend/public/branding/official/

@@ -1,0 +1,4 @@
+/* Global styles: tokens, reset and intentionally shared UI primitives only. */
+@import './styles/tokens.css';
+@import './styles/base.css';
+@import './styles/primitives.css';

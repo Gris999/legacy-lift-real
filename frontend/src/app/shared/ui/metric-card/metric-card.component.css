@@ -1,0 +1,15 @@
+/* Encapsulated styling for metric-card. */
+.ll-metric { padding: 19px 19px 17px; min-width: 0; min-height: 147px; }
+.ll-metric-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--color-text-secondary); font: 650 10px 'JetBrains Mono',monospace; letter-spacing: .03em; }
+.ll-metric-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--radius-sm); color: var(--color-accent); background: var(--color-accent-surface); }
+.ll-metric-value { color: var(--color-text); font-size: 30px; font-weight: 760; line-height: 1.15; letter-spacing: -.04em; margin: 13px 0 10px; overflow-wrap: anywhere; }
+.ll-metric-value small { font-size: 13px; color: var(--color-muted); font-weight: 600; margin-left: 6px; letter-spacing: 0; }
+.ll-metric-value-compact { font-size: 19px; letter-spacing: -.02em; margin: 17px 0 15px; }
+.ll-metric-detail { color: var(--color-muted); font-size: 11.5px; overflow-wrap: anywhere; }
+
+@media (max-width:630px) {
+  .ll-metric { padding:14px; min-height:133px; }
+  .ll-metric-value { font-size:24px; }
+  .ll-metric-value-compact { font-size:17px; }
+  .ll-metric-head { font-size:9px; }
+}
