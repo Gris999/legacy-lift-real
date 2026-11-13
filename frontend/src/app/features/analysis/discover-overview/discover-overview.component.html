@@ -1,0 +1,28 @@
+<section class="panel insight-panel" *ngIf="vm.ingestRunning || vm.discoverData" aria-label="Resultados del análisis de código">
+  <ll-section-heading eyebrow="ANÁLISIS ESTÁTICO" title="Radiografía del código"
+    description="Lenguajes y dependencias observadas. El gráfico se actualiza mientras se escanea la fuente." />
+  <div *ngIf="vm.isAnyRunning && vm.assessmentProgress?.phase==='understand'" class="scan-state" role="status" aria-live="polite">
+    <ll-icon name="psychology" size="sm"/><span>Understand · interpretando lotes de código sin alterar el original</span>
+    <strong>{{vm.assessmentProgress?.progress || 0}}%</strong>
+  </div>
+  <div *ngIf="vm.ingestRunning" class="scan-state" role="status" aria-live="polite">
+    <ll-icon name="progress_activity" size="sm" />
+    <span>Escaneando archivos · {{vm.scanProgress?.scanned || 0}} / {{vm.scanProgress?.total || '…'}}</span>
+    <strong>{{progress}}%</strong>
+  </div>
+  <div class="languages-header"><strong>Composición por lenguajes</strong><span>{{vm.discoverData?.files || vm.scanProgress?.total || 0}} archivos</span></div>
+  <div class="language-bar" role="img" [attr.aria-label]="'Distribución aproximada por bytes: '+shares.length+' lenguajes'">
+    <span *ngFor="let item of shares" [style.flex-basis.%]="item.percent" [style.background]="color(item.name)"
+          [title]="item.name+' · '+item.percent.toFixed(1)+'%'" class="language-segment"></span>
+  </div>
+  <div class="language-legend">
+    <div *ngFor="let item of shares" class="language-item">
+      <span class="swatch" [style.background]="color(item.name)"></span>
+      <span>{{item.name}}</span><strong>{{item.percent | number:'1.1-1'}}%</strong>
+      <small>{{item.files}} archivos</small>
+    </div>
+    <span *ngIf="!shares.length" class="empty">Los porcentajes aparecerán al leer los primeros archivos reconocidos.</span>
+  </div>
+  <p class="methodology">Estimación por bytes de archivos reconocidos, no equivalente a GitHub Linguist; archivos sin lenguaje reconocido excluidos del porcentaje.</p>
+  <ll-architecture-graph *ngIf="vm.discoverData?.graph" [graph]="vm.discoverData!.graph" />
+</section>

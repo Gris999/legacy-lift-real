@@ -12,7 +12,11 @@
     "prebuild": "npm run sync:branding",
     "prebuild:dev": "npm run sync:branding",
     "check:branding": "node scripts/check-branding.mjs",
-    "check:architecture": "node scripts/check-architecture.mjs"
+    "check:architecture": "node scripts/check-architecture.mjs",
+    "check:sprint2": "node scripts/check-sprint2.mjs",
+    "check:session": "node scripts/check-session.mjs",
+    "check:interactions": "node scripts/check-interactions.mjs",
+    "check:sprint3": "node scripts/check-sprint3.mjs"
   },
   "dependencies": {
     "@angular/common": "^22.2.0",

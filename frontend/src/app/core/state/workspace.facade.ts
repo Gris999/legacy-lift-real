@@ -1,10 +1,11 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Subscription, interval } from 'rxjs';
 import { marked } from 'marked';
-import { ApiService, Project, Provider, Run, Snapshot, IngestJob } from '../api/api.service';
+import { ApiService, Project, Provider, Run, Snapshot, IngestJob, DiscoverData, ScanProgress, SourceFile, ReviewItem, AssessmentData, Blueprint, BlueprintData, PackCatalog, MigrationWave, BaselinePreflight } from '../api/api.service';
 import { StageView } from '../models/pipeline-stage';
 import { ThemeService } from '../theme/theme.service';
+import { AuthSessionService } from '../auth/auth-session.service';
 
 const STAGES = [
   {id:'discover', index:'01', label:'Discover', description:'Inventario técnico', sprint:'S2', file:'inventory.md'},
@@ -19,62 +20,242 @@ const STAGES = [
 @Injectable({providedIn: 'root'})
 export class WorkspaceFacade {
   private api = inject(ApiService);
+  private readonly session = inject(AuthSessionService);
+  private sessionWatcher?: Subscription;
+  private activeSessionToken: string | null = null;
+  private selectedRequestId = 0;
+  /** Angular 22 defaults to OnPush. Every template-facing mutable field is signal-backed,
+   * preserving the facade property interface while notifying all interested components.
+   * Never mutate arrays, records or snapshot objects in place: replace their references.
+   */
+  private readonly _sessionCheckFailed = signal<boolean>(false);
+  get sessionCheckFailed(): boolean { return this._sessionCheckFailed(); }
+  set sessionCheckFailed(value: boolean) { this._sessionCheckFailed.set(value); }
   readonly themeService = inject(ThemeService);
   get theme(): string { return this.themeService.value; }
   toggleTheme(): void { this.themeService.toggle(); }
   private poller?: Subscription;
   readonly steps = STAGES;
-  authenticated = !!sessionStorage.getItem('legacylift_session');
-  password = '';
-  passwordVisible = false;
-  mobileNavOpen = false;
-  projectQuery = '';
-  email = '';
-  displayName = '';
-  registerMode = false;
-  registrationOpen = false;
-  bootstrapRequired = false;
-  bootstrapSecret = '';
-  currentUser = 'Operador';
-  busy = false;
-  error = '';
-  notice = '';
-  projects: Project[] = [];
-  providers: Provider[] = [];
-  selected?: Project;
-  stageId = 'discover';
-  artifactName = '';
-  artifactContent = '';
-  rendered = '';
-  showCreate = false;
-  showHelp = false;
-  createName = '';
-  createSystem = '';
-  createProvider: Provider['id'] = 'demo';
-  currentTab: 'overview' | 'artifacts' = 'overview';
-  uploading = false;
-  githubConfigured = false;
-  githubLogin = '';
-  githubRepos: {full_name:string;private:boolean;default_branch:string}[] = [];
-  selectedRepo = '';
-  snapshots: Snapshot[] = [];
-  ingestJobs: IngestJob[] = [];
+  private readonly _authenticated = signal<boolean>(false);
+  get authenticated(): boolean { return this._authenticated(); }
+  set authenticated(value: boolean) { this._authenticated.set(value); }
+  private readonly _password = signal<string>('');
+  get password(): string { return this._password(); }
+  set password(value: string) { this._password.set(value); }
+  private readonly _passwordVisible = signal<boolean>(false);
+  get passwordVisible(): boolean { return this._passwordVisible(); }
+  set passwordVisible(value: boolean) { this._passwordVisible.set(value); }
+  private readonly _mobileNavOpen = signal<boolean>(false);
+  get mobileNavOpen(): boolean { return this._mobileNavOpen(); }
+  set mobileNavOpen(value: boolean) { this._mobileNavOpen.set(value); }
+  private readonly _projectQuery = signal<string>('');
+  get projectQuery(): string { return this._projectQuery(); }
+  set projectQuery(value: string) { this._projectQuery.set(value); }
+  private readonly _email = signal<string>('');
+  get email(): string { return this._email(); }
+  set email(value: string) { this._email.set(value); }
+  private readonly _displayName = signal<string>('');
+  get displayName(): string { return this._displayName(); }
+  set displayName(value: string) { this._displayName.set(value); }
+  private readonly _registerMode = signal<boolean>(false);
+  get registerMode(): boolean { return this._registerMode(); }
+  set registerMode(value: boolean) { this._registerMode.set(value); }
+  private readonly _registrationOpen = signal<boolean>(false);
+  get registrationOpen(): boolean { return this._registrationOpen(); }
+  set registrationOpen(value: boolean) { this._registrationOpen.set(value); }
+  private readonly _bootstrapRequired = signal<boolean>(false);
+  get bootstrapRequired(): boolean { return this._bootstrapRequired(); }
+  set bootstrapRequired(value: boolean) { this._bootstrapRequired.set(value); }
+  private readonly _bootstrapSecret = signal<string>('');
+  get bootstrapSecret(): string { return this._bootstrapSecret(); }
+  set bootstrapSecret(value: string) { this._bootstrapSecret.set(value); }
+  private readonly _currentUser = signal<string>('Operador');
+  get currentUser(): string { return this._currentUser(); }
+  set currentUser(value: string) { this._currentUser.set(value); }
+  private readonly _busy = signal<boolean>(false);
+  get busy(): boolean { return this._busy(); }
+  set busy(value: boolean) { this._busy.set(value); }
+  private readonly _error = signal<string>('');
+  get error(): string { return this._error(); }
+  set error(value: string) { this._error.set(value); }
+  private readonly _notice = signal<string>('');
+  get notice(): string { return this._notice(); }
+  set notice(value: string) { this._notice.set(value); }
+  private readonly _projects = signal<Project[]>([]);
+  get projects(): Project[] { return this._projects(); }
+  set projects(value: Project[]) { this._projects.set(value); }
+  private readonly _providers = signal<Provider[]>([]);
+  get providers(): Provider[] { return this._providers(); }
+  set providers(value: Provider[]) { this._providers.set(value); }
+  private readonly _selected = signal<Project | undefined>(undefined);
+  get selected(): Project | undefined { return this._selected(); }
+  set selected(value: Project | undefined) { this._selected.set(value); }
+  private readonly _packs = signal<PackCatalog|null>(null);
+  get packs():PackCatalog|null{return this._packs();}
+  set packs(value:PackCatalog|null){this._packs.set(value);}
+  packMatch(wave:MigrationWave):{compatible:boolean;reason:string;name:string} {
+    const matches=this.packs?.compatibility?.[wave.id]||[];
+    const best=matches.find(m=>m.compatible);
+    const pack=this.packs?.packs.find(p=>p.id===best?.id);
+    return best?{compatible:true,reason:best.reason,name:pack?.name||best.id}:
+      {compatible:false,reason:matches.find(m=>m.reason)?.reason||'Sin pack compatible',name:'No ejecutable'};
+  }
+  private readonly _baselinePreflight = signal<BaselinePreflight|null>(null);
+  get baselinePreflight():BaselinePreflight|null{return this._baselinePreflight();}
+  set baselinePreflight(value:BaselinePreflight|null){this._baselinePreflight.set(value);}
+  private readonly _baselineBusy = signal<boolean>(false);
+  get baselineBusy():boolean {return this._baselineBusy();}
+  set baselineBusy(value:boolean){this._baselineBusy.set(value);}
+  private readonly _blueprint = signal<Blueprint|null>(null);
+  get blueprint():Blueprint|null {return this._blueprint();}
+  set blueprint(value:Blueprint|null){this._blueprint.set(value);}
+  private readonly _blueprintDraft = signal<BlueprintData|null>(null);
+  get blueprintDraft():BlueprintData|null{return this._blueprintDraft();}
+  set blueprintDraft(value:BlueprintData|null){this._blueprintDraft.set(value);}
+  private readonly _blueprintSaving = signal<boolean>(false);
+  get blueprintSaving():boolean{return this._blueprintSaving();}
+  set blueprintSaving(value:boolean){this._blueprintSaving.set(value);}
+  private readonly _stageId = signal<string>('discover');
+  get stageId(): string { return this._stageId(); }
+  set stageId(value: string) { this._stageId.set(value); }
+  private readonly _artifactName = signal<string>('');
+  get artifactName(): string { return this._artifactName(); }
+  set artifactName(value: string) { this._artifactName.set(value); }
+  private readonly _artifactContent = signal<string>('');
+  get artifactContent(): string { return this._artifactContent(); }
+  set artifactContent(value: string) { this._artifactContent.set(value); }
+  private readonly _rendered = signal<string>('');
+  get rendered(): string { return this._rendered(); }
+  set rendered(value: string) { this._rendered.set(value); }
+  private readonly _showCreate = signal<boolean>(false);
+  get showCreate(): boolean { return this._showCreate(); }
+  set showCreate(value: boolean) { this._showCreate.set(value); }
+  private readonly _showHelp = signal<boolean>(false);
+  get showHelp(): boolean { return this._showHelp(); }
+  set showHelp(value: boolean) { this._showHelp.set(value); }
+  private readonly _createName = signal<string>('');
+  get createName(): string { return this._createName(); }
+  set createName(value: string) { this._createName.set(value); }
+  private readonly _createSystem = signal<string>('');
+  get createSystem(): string { return this._createSystem(); }
+  set createSystem(value: string) { this._createSystem.set(value); }
+  private readonly _createProvider = signal<Provider['id']>('demo');
+  get createProvider(): Provider['id'] { return this._createProvider(); }
+  set createProvider(value: Provider['id']) { this._createProvider.set(value); }
+  private readonly _workspaceSection = signal<string>('source');
+  get workspaceSection():string {return this._workspaceSection();}
+  set workspaceSection(value:string){this._workspaceSection.set(value);}
+  private readonly _currentTab = signal<'overview' | 'artifacts'>('overview');
+  get currentTab(): 'overview' | 'artifacts' { return this._currentTab(); }
+  set currentTab(value: 'overview' | 'artifacts') { this._currentTab.set(value); }
+  private readonly _uploading = signal<boolean>(false);
+  get uploading(): boolean { return this._uploading(); }
+  set uploading(value: boolean) { this._uploading.set(value); }
+  private readonly _githubConfigured = signal<boolean>(false);
+  get githubConfigured(): boolean { return this._githubConfigured(); }
+  set githubConfigured(value: boolean) { this._githubConfigured.set(value); }
+  private readonly _githubLogin = signal<string>('');
+  get githubLogin(): string { return this._githubLogin(); }
+  set githubLogin(value: string) { this._githubLogin.set(value); }
+  private readonly _githubRepos = signal<{full_name:string;private:boolean;default_branch:string}[]>([]);
+  get githubRepos(): {full_name:string;private:boolean;default_branch:string}[] { return this._githubRepos(); }
+  set githubRepos(value: {full_name:string;private:boolean;default_branch:string}[]) { this._githubRepos.set(value); }
+  private readonly _selectedRepo = signal<string>('');
+  get selectedRepo(): string { return this._selectedRepo(); }
+  set selectedRepo(value: string) { this._selectedRepo.set(value); }
+  private readonly _snapshots = signal<Snapshot[]>([]);
+  get snapshots(): Snapshot[] { return this._snapshots(); }
+  set snapshots(value: Snapshot[]) { this._snapshots.set(value); }
+  private readonly _ingestJobs = signal<IngestJob[]>([]);
+  get ingestJobs(): IngestJob[] { return this._ingestJobs(); }
+  set ingestJobs(value: IngestJob[]) { this._ingestJobs.set(value); }
+  private readonly _discoverData = signal<DiscoverData | null>(null);
+  get discoverData(): DiscoverData | null { return this._discoverData(); }
+  set discoverData(value: DiscoverData | null) { this._discoverData.set(value); }
+  private readonly _scanProgress = signal<ScanProgress | null>(null);
+  get scanProgress(): ScanProgress | null { return this._scanProgress(); }
+  set scanProgress(value: ScanProgress | null) { this._scanProgress.set(value); }
+  private readonly _sourceFiles = signal<SourceFile[]>([]);
+  get sourceFiles(): SourceFile[] { return this._sourceFiles(); }
+  set sourceFiles(value: SourceFile[]) { this._sourceFiles.set(value); }
+  private readonly _selectedFilePaths = signal<Set<string>>(new Set<string>());
+  get selectedFilePaths(): Set<string> { return this._selectedFilePaths(); }
+  set selectedFilePaths(value: Set<string>) { this._selectedFilePaths.set(value); }
+  private readonly _fileQuery = signal<string>('');
+  get fileQuery(): string { return this._fileQuery(); }
+  set fileQuery(value: string) { this._fileQuery.set(value); }
+  private readonly _selectionExplicit = signal<boolean>(false);
+  get selectionExplicit(): boolean { return this._selectionExplicit(); }
+  set selectionExplicit(value: boolean) { this._selectionExplicit.set(value); }
+  private readonly _reviews = signal<ReviewItem[]>([]);
+  get reviews(): ReviewItem[] { return this._reviews(); }
+  set reviews(value: ReviewItem[]) { this._reviews.set(value); }
+  private readonly _reviewQuery = signal<string>('');
+  get reviewQuery(): string { return this._reviewQuery(); }
+  set reviewQuery(value: string) { this._reviewQuery.set(value); }
+  private readonly _reviewFilter = signal<'all' | 'pending' | 'confirmed' | 'discarded'>('all');
+  get reviewFilter(): 'all' | 'pending' | 'confirmed' | 'discarded' { return this._reviewFilter(); }
+  set reviewFilter(value: 'all' | 'pending' | 'confirmed' | 'discarded') { this._reviewFilter.set(value); }
+  private readonly _reviewDraft = signal<Record<string,string>>({});
+  get reviewDraft(): Record<string,string> { return this._reviewDraft(); }
+  set reviewDraft(value: Record<string,string>) { this._reviewDraft.set(value); }
+  private readonly _analysisBusy = signal<boolean>(false);
+  get analysisBusy(): boolean { return this._analysisBusy(); }
+  set analysisBusy(value: boolean) { this._analysisBusy.set(value); }
+  private readonly _assessmentData = signal<AssessmentData | null>(null);
+  get assessmentData(): AssessmentData | null { return this._assessmentData(); }
+  set assessmentData(value: AssessmentData | null) { this._assessmentData.set(value); }
+  private readonly _assessmentProgress = signal<{phase:string;stage:string;progress:number;findings?:number} | null>(null);
+  get assessmentProgress(): {phase:string;stage:string;progress:number;findings?:number} | null { return this._assessmentProgress(); }
+  set assessmentProgress(value: {phase:string;stage:string;progress:number;findings?:number} | null) { this._assessmentProgress.set(value); }
   private eventsAbort?: AbortController;
   private lastEventId = 0;
-  editName = '';
-  editSystem = '';
-  showEdit = false;
+  private readonly _editName = signal<string>('');
+  get editName(): string { return this._editName(); }
+  set editName(value: string) { this._editName.set(value); }
+  private readonly _editSystem = signal<string>('');
+  get editSystem(): string { return this._editSystem(); }
+  set editSystem(value: string) { this._editSystem.set(value); }
+  private readonly _showEdit = signal<boolean>(false);
+  get showEdit(): boolean { return this._showEdit(); }
+  set showEdit(value: boolean) { this._showEdit.set(value); }
 
   start(): void {
-    this.api.authConfig().subscribe({next: v => {this.registrationOpen=v.registration_open;this.bootstrapRequired=v.bootstrap_required;}});
-    if (this.authenticated) this.bootstrap();
+    this.api.authConfig().subscribe({
+      next: v => {this.registrationOpen=v.registration_open;this.bootstrapRequired=v.bootstrap_required;},
+      error: () => { /* Registration config is noncritical to an existing login. */ }
+    });
+    this.sessionWatcher = this.session.changes.subscribe(stored => {
+      const nextToken = stored?.access_token ?? null;
+      const changed = nextToken !== this.activeSessionToken;
+      this.activeSessionToken = nextToken;
+      if (changed) this.resetWorkspace();
+      this.authenticated = !!nextToken;
+      this.currentUser = stored?.user?.username || 'Operador';
+      if (changed && nextToken) this.bootstrap();
+    });
     this.poller = interval(2500).subscribe(() => {
       if (!this.selected || !this.authenticated) return;
       this.refreshSelected(true);
       this.loadJobs(this.selected.id);
     });
   }
-  stop(): void { this.poller?.unsubscribe(); this.eventsAbort?.abort(); }
+  stop(): void {
+    this.poller?.unsubscribe(); this.sessionWatcher?.unsubscribe(); this.eventsAbort?.abort();
+  }
+
+  private resetWorkspace(): void {
+    this.eventsAbort?.abort(); this.eventsAbort=undefined;
+    ++this.selectedRequestId; // Invalidate outstanding project loads from the old account.
+    this.mobileNavOpen=false;this.projects=[];this.providers=[];this.selected=undefined;
+    this.snapshots=[];this.ingestJobs=[];this.githubConfigured=false;this.githubLogin='';this.githubRepos=[];this.selectedRepo='';
+    this.discoverData=null;this.scanProgress=null;this.sourceFiles=[];this.selectedFilePaths=new Set();
+    this.reviews=[];this.reviewDraft={};this.assessmentData=null;this.assessmentProgress=null;this.blueprint=null;this.blueprintDraft=null;this.packs=null;this.baselinePreflight=null;this.workspaceSection='source';
+    this.artifactContent='';this.artifactName='';this.rendered='';this.showCreate=false;this.showEdit=false;this.showHelp=false;
+    this.createName='';this.createSystem='';this.projectQuery='';this.stageId='discover';
+    this.error='';this.notice='';this.busy=false;this.uploading=false;this.analysisBusy=false;
+    this.sessionCheckFailed=false;
+  }
 
   get userInitial(): string { return (this.currentUser.trim().charAt(0) || 'U').toUpperCase(); }
   get filteredProjects(): Project[] {
@@ -128,39 +309,74 @@ export class WorkspaceFacade {
   dismiss(): void { this.notice = ''; this.error = ''; }
 
   login(): void {
-    if (!this.password || !this.email) return;
-    this.busy = true;
+    if (this.busy || !this.password || !this.email) return;
+    this.busy = true; this.error = '';
     const result = this.registerMode
       ? this.api.register(this.email, this.password, this.displayName, this.bootstrapSecret)
       : this.api.login(this.email, this.password);
     result.subscribe({
-      next: ({access_token}) => { sessionStorage.setItem('legacylift_session', access_token);
-        this.authenticated = true; this.password = '';this.bootstrapSecret=''; this.busy = false; this.bootstrap(); },
+      next: response => {
+        this.password='';this.bootstrapSecret='';this.busy=false;
+        try {
+          const user = response.user ? {username: response.user.display_name, email: response.user.email, id: response.user.id} : null;
+          this.session.save(response.access_token, response.expires_at, user);
+          this.registerMode=false;
+        } catch(e) { this.showError(e); }
+      },
       error: e => this.showError(e)
     });
   }
   logout(): void {
-    if (this.authenticated) this.api.logout().subscribe({error: () => {}});
-    sessionStorage.removeItem('legacylift_session'); this.authenticated=false;
-    this.eventsAbort?.abort();this.mobileNavOpen=false;this.projects=[]; this.selected=undefined; this.artifactContent=''; this.notice='';
+    const token = this.session.token;
+    if (token) this.api.logout().subscribe({error: () => { /* Local logout must still succeed offline. */ }});
+    this.session.clear(token ?? undefined);
   }
   bootstrap(): void {
-    this.api.me().subscribe({next: user => this.currentUser=user.username, error: () => this.logout()});
-    this.api.providers().subscribe({next: rows => this.providers=rows, error:e=>this.showError(e)});
-    this.loadProjects();
-    this.refreshGithub();
+    const token = this.session.token;
+    if (!token) return;
+    this.sessionCheckFailed = false;
+    // Do not run project requests until the server confirms this session.
+    this.api.me().subscribe({
+      next: user => {
+        if (this.session.token !== token) return; // Stale response from a previous account.
+        this.session.rememberUser(user, token);
+        this.api.providers().subscribe({
+          next: rows => {if(this.session.token===token) this.providers=rows;},
+          error:e => {if(this.session.token===token) this.showError(e);}
+        });
+        this.loadProjects();
+        this.refreshGithub();
+      },
+      error: e => {
+        if (this.session.token !== token) return;
+        if (e instanceof HttpErrorResponse && e.status===401) {
+          this.session.clear(token);
+        } else {
+          // A temporary 502, timeout or network error must never revoke a valid login.
+          this.sessionCheckFailed=true;
+          this.error='No se pudo verificar tu sesión con el servidor. Tu acceso se conserva. Reintenta cuando vuelva la conexión.';
+        }
+      }
+    });
   }
   loadProjects(): void {
+    const token = this.session.token;
     this.api.projects().subscribe({next: rows => {
+      if (!token || this.session.token!==token) return;
       this.projects=rows;
       if (!this.selected && rows.length) this.select(rows[0].id);
-    }, error:e=>this.showError(e)});
+    }, error:e=>{if(this.session.token===token)this.showError(e);}});
   }
   refreshGithub(): void {
+    const token = this.session.token;
+    if (!token) return;
     this.api.githubStatus().subscribe({next: state => {
+      if (this.session.token!==token) return;
       this.githubConfigured=state.configured;
       this.githubLogin=state.connection?.github_login || '';
-      if (this.githubLogin) this.api.githubRepos().subscribe({next: rows=>this.githubRepos=rows});
+      if (this.githubLogin) this.api.githubRepos().subscribe({next: rows=>{
+        if (this.session.token===token) this.githubRepos=rows;
+      }});
     }});
   }
   connectGithub(): void {
@@ -181,18 +397,30 @@ export class WorkspaceFacade {
     },error:e=>this.showError(e)});
   }
   create(): void {
-    if (this.createName.trim().length<3 || this.createSystem.trim().length<2) return;
+    if (this.busy || this.createName.trim().length<3 || this.createSystem.trim().length<2) return;
+    const token = this.session.token;
+    if (!token) return;
     this.busy=true;
     this.api.create(this.createName.trim(), this.createSystem.trim(), this.createProvider).subscribe({
-      next: p => { this.busy=false; this.showCreate=false; this.createName=''; this.createSystem='';
-        this.projects=[p,...this.projects]; this.select(p.id); this.toast('Proyecto creado. Sube el ZIP para comenzar.'); },
-      error:e=>this.showError(e)
+      next: p => {
+        if (this.session.token!==token) return;
+        this.busy=false; this.showCreate=false; this.createName=''; this.createSystem='';
+        this.projects=[p,...this.projects]; this.select(p.id); this.toast('Proyecto creado. Sube el ZIP para comenzar.');
+      },
+      error:e=>{if(this.session.token===token)this.showError(e);}
     });
   }
   select(pid: string): void {
+    const token = this.session.token;
+    if (!token) return;
+    const requestId = ++this.selectedRequestId;
     this.eventsAbort?.abort();this.lastEventId=0;this.ingestJobs=[];
-    this.selected = undefined; this.artifactContent=''; this.artifactName=''; this.stageId='discover';
-    this.api.project(pid).subscribe({next:p=>{this.selected=p; this.pickFirstArtifact(); this.loadSnapshots(pid);this.loadJobs(pid);this.connectEvents(pid);},error:e=>this.showError(e)});
+    this.discoverData=null;this.scanProgress=null;this.sourceFiles=[];this.reviews=[];this.assessmentData=null;this.assessmentProgress=null;this.selectedFilePaths=new Set();
+    this.selected = undefined; this.artifactContent=''; this.artifactName=''; this.stageId='discover';this.workspaceSection='source';
+    this.api.project(pid).subscribe({next:p=>{
+      if(this.session.token!==token || requestId!==this.selectedRequestId) return;
+      this.selected=p; this.pickFirstArtifact(); this.loadSnapshots(pid);this.loadJobs(pid);this.loadDiscover(pid);this.loadAnalysisControls(pid);this.loadReviews(pid);this.loadAssessment(pid);this.loadBlueprint(pid);this.loadBaselinePreflight(pid);this.loadBaselinePreflight(pid);this.connectEvents(pid);
+    },error:e=>{if(this.session.token===token)this.showError(e);}});
   }
   refreshSelected(silent=false): void {
     if (!this.selected) return;
@@ -204,10 +432,10 @@ export class WorkspaceFacade {
       const sourceChanged=updated.active_snapshot_id!==this.selected.active_snapshot_id;
       this.selected=updated;
       if (!silent || sourceChanged) { this.loadSnapshots(pid);this.loadJobs(pid); }
-      if (sourceChanged) this.pickFirstArtifact();
+      if (sourceChanged) {this.blueprint=null;this.blueprintDraft=null;this.baselinePreflight=null;this.pickFirstArtifact();this.loadDiscover(pid);this.loadAnalysisControls(pid);this.loadReviews(pid);this.loadAssessment(pid);}
       if (hadRunning && !this.isAnyRunning) {
         if (this.activeRun?.status === 'completed') {
-          this.toast('Fase completada; consulta el artefacto generado.');
+          this.toast('Fase completada; consulta el artefacto generado.');this.loadReviews(pid);this.loadAssessment(pid);this.loadBlueprint(pid);
           this.openArtifact(this.activeStep.file);
         } else if (this.activeRun?.status === 'failed') {
           this.error=this.activeRun.error || 'La operación falló';
@@ -222,7 +450,7 @@ export class WorkspaceFacade {
     else if (arr.length) this.openArtifact(arr[0]);
   }
   chooseStage(id: string): void {
-    this.stageId=id;
+    this.stageId=id;this.workspaceSection=id;
     const step=STAGES.find(x=>x.id===id);
     if (step && this.selected?.artifacts?.includes(step.file)) this.openArtifact(step.file);
   }
@@ -231,7 +459,7 @@ export class WorkspaceFacade {
       const previouslyRunning=this.ingestRunning;
       this.ingestJobs=items;
       if (previouslyRunning && !this.ingestRunning) {
-        this.refreshSelected();
+        this.refreshSelected();this.loadDiscover(pid);this.loadAnalysisControls(pid);this.loadReviews(pid);this.loadAssessment(pid);
         this.toast(items[0]?.status==='completed'?'Código importado y escaneado.':'La ingesta terminó; revisa su estado.');
       }
     }}});
@@ -252,7 +480,7 @@ export class WorkspaceFacade {
     this.eventsAbort?.abort();
     const controller=new AbortController();this.eventsAbort=controller;
     try {
-      const token=sessionStorage.getItem('legacylift_session');
+      const token=this.session.token;
       if (!token) return;
       const response=await fetch(`/api/projects/${pid}/events?after=${this.lastEventId}`, {
         headers:{Authorization:`Bearer ${token}`},signal:controller.signal,cache:'no-store'
@@ -267,11 +495,95 @@ export class WorkspaceFacade {
           const id=frame.match(/^id: (\d+)/m);
           if(id) this.lastEventId=Math.max(this.lastEventId,Number(id[1]));
           if(frame.includes('event: update') && this.selected?.id===pid) {
+            const match=frame.match(/^data: (.+)$/m);
+            if (match) {
+              try {
+                const evt=JSON.parse(match[1]);
+                if(evt.kind==='analysis-progress') this.scanProgress=evt.payload as ScanProgress;
+                if(evt.kind==='analysis' && evt.payload?.phase==='discover') this.loadDiscover(pid);
+                if(evt.kind==='analysis' && evt.payload?.phase==='assess') this.loadAssessment(pid);
+                if(evt.kind==='wave'||evt.kind==='baseline')this.loadBaselinePreflight(pid);
+                if(evt.kind==='blueprint') this.loadBlueprint(pid);
+                if(evt.kind==='analysis-stage') this.assessmentProgress=evt.payload;
+              } catch { /* Ignore malformed event; polling is the fallback. */ }
+            }
             this.refreshSelected(true);this.loadJobs(pid);
           }
         }
       }
     } catch(e) { if(!controller.signal.aborted) { /* polling fallback */ } }
+  }
+  get isAssessRunning():boolean {return this.latestRun('assess')?.status==='running';}
+  loadAssessment(pid:string):void {
+    this.api.analysisPhase(pid,'assess').subscribe({next:r=>{
+      if(this.selected?.id===pid && this.selected.active_snapshot_id===r.snapshot_id)
+        this.assessmentData=r.data as AssessmentData|null;
+    },error:()=>{/* No snapshot or assessment yet. */}});
+  }
+  get filteredSourceFiles():SourceFile[] {
+    const term=this.fileQuery.toLocaleLowerCase().trim();
+    return this.sourceFiles.filter(f=>f.selected && (!term || (f.path+' '+f.language).toLocaleLowerCase().includes(term))).slice(0,100);
+  }
+  get filteredReviews():ReviewItem[] {
+    const term=this.reviewQuery.toLocaleLowerCase().trim();
+    return this.reviews.filter(r=>(this.reviewFilter==='all'||r.status===this.reviewFilter) &&
+      (!term || (r.title+' '+r.phase+' '+JSON.stringify(r.evidence)).toLocaleLowerCase().includes(term))).slice(0,70);
+  }
+  get selectedFileCount():number {return this.selectedFilePaths.size;}
+  loadAnalysisControls(pid:string):void {
+    this.api.analysisFiles(pid).subscribe({next:r=>{
+      if(this.selected?.id!==pid||this.selected.active_snapshot_id!==r.snapshot_id)return;
+      this.sourceFiles=r.files;this.selectedFilePaths=new Set(r.selected_files);this.selectionExplicit=r.explicit_selection;
+    }});
+    this.api.analysisConsent(pid).subscribe({next:r=>{
+      if(this.selected?.id===pid&&this.selected.active_snapshot_id===r.snapshot_id) this.selected={...this.selected, code_consent:r.approved};
+    }});
+  }
+  toggleSourceFile(path:string,on:boolean):void {
+    const files=new Set(this.selectedFilePaths);
+    if(on)files.add(path);else files.delete(path);
+    this.selectedFilePaths=files;
+  }
+  selectAllCodeFiles():void {this.selectedFilePaths=new Set(this.sourceFiles.filter(f=>f.selected).map(f=>f.path));}
+  saveSourceSelection():void {
+    if(!this.selected||!this.selectedFileCount)return;
+    const pid=this.selected.id;this.analysisBusy=true;
+    this.api.setAnalysisSelection(pid,[...this.selectedFilePaths]).subscribe({next:()=>{
+      this.analysisBusy=false;this.selectionExplicit=true;this.assessmentData=null;this.toast('Selección guardada; los análisis dependientes se invalidaron si cambió.');this.refreshSelected();
+    },error:e=>{this.analysisBusy=false;this.showError(e);}});
+  }
+  updateCodeConsent(approved:boolean):void {
+    if(!this.selected)return;
+    const pid=this.selected.id;this.analysisBusy=true;
+    this.api.setAnalysisConsent(pid,approved).subscribe({next:r=>{
+      this.analysisBusy=false;if(this.selected?.id===pid)this.selected={...this.selected, code_consent:r.approved};
+      this.toast(approved?'Autorización de envío de código registrada.':'Autorización revocada.');this.refreshSelected();
+    },error:e=>{this.analysisBusy=false;this.showError(e);}});
+  }
+  loadReviews(pid:string):void {
+    this.api.reviewItems(pid).subscribe({next:rows=>{
+      if(this.selected?.id===pid){this.reviews=rows;
+        const draft={...this.reviewDraft};
+        for(const item of rows) if(!(item.id in draft))draft[item.id]=item.comment||'';
+        this.reviewDraft=draft;
+      }
+    }});
+  }
+  setReviewDraft(id:string, comment:string):void { this.reviewDraft={...this.reviewDraft,[id]:comment}; }
+  updateReview(row:ReviewItem,status:'pending'|'confirmed'|'discarded'):void {
+    if(!this.selected)return;
+    const pid=this.selected.id;
+    this.api.reviewItem(pid,row.id,status,this.reviewDraft[row.id]||'').subscribe({next:()=>{
+      this.loadReviews(pid);this.toast('Revisión guardada en el snapshot activo.');
+    },error:e=>this.showError(e)});
+  }
+  loadDiscover(pid: string): void {
+    this.api.discover(pid).subscribe({next: r=>{
+      if(this.selected?.id===pid && r.snapshot_id===this.selected.active_snapshot_id) {
+        this.discoverData=r.data;
+        if(this.ingestRunning && r.progress) this.scanProgress=r.progress;
+      }
+    },error:()=>{/* Keep ZIP and existing phases available on older servers. */}});
   }
   loadSnapshots(pid: string): void {
     this.api.snapshots(pid).subscribe({next:items=>{if(this.selected?.id===pid)this.snapshots=items;}});
@@ -279,14 +591,14 @@ export class WorkspaceFacade {
   activateSnapshot(sid: string): void {
     if (!this.selected || sid===this.selected.active_snapshot_id) return;
     const pid=this.selected.id;
-    this.busy=true;
+    this.busy=true;this.discoverData=null;this.scanProgress=null;this.sourceFiles=[];this.reviews=[];this.assessmentData=null;this.assessmentProgress=null;this.selectedFilePaths=new Set();
     this.api.activateSnapshot(pid,sid).subscribe({next:()=>{
       this.busy=false;this.artifactContent='';this.refreshSelected();this.toast('Snapshot activado. Análisis anteriores invalidado.');
     },error:e=>this.showError(e)});
   }
   importRepository(): void {
     if (!this.selected || !this.selectedRepo || this.uploading) return;
-    const pid=this.selected.id;this.uploading=true;
+    const pid=this.selected.id;this.uploading=true;this.scanProgress=null;
     this.api.importGit(pid,this.selectedRepo).subscribe({next:job=>{
       this.uploading=false;this.toast(`Importación ${job.id.slice(0,8)} en cola. Sigue el progreso.`);this.loadJobs(pid);
     },error:e=>this.showError(e)});
@@ -295,7 +607,7 @@ export class WorkspaceFacade {
     const input=event.target as HTMLInputElement;
     const file=input.files?.[0];
     if (!file || !this.selected) return;
-    this.uploading=true;
+    this.uploading=true;this.scanProgress=null;
     this.api.upload(this.selected.id,file).subscribe({
       next: job=>{this.uploading=false;this.toast(`Ingesta ${job.id.slice(0,8)} iniciada.`);this.loadJobs(this.selected!.id);},
       error:e=>this.showError(e)
@@ -304,7 +616,7 @@ export class WorkspaceFacade {
   }
   loadDemo(): void {
     if (!this.selected || this.uploading) return;
-    const pid = this.selected.id; this.uploading = true;
+    const pid = this.selected.id; this.uploading = true;this.scanProgress=null;
     this.api.demoZip().subscribe({
       next: blob => {
         const file = new File([blob], 'legacylift-demo.zip', {type: 'application/zip'});
@@ -323,10 +635,77 @@ export class WorkspaceFacade {
       error:e=>this.showError(e)
     });
   }
+  loadBlueprint(pid:string):void {
+    this.api.blueprint(pid).subscribe({next:r=>{
+      if(this.selected?.id!==pid)return;
+      this.blueprint=r.blueprint;this.loadPacks(pid);
+      this.blueprintDraft=r.blueprint?structuredClone(r.blueprint.data):null;
+    },error:()=>{/* Older version or plan not generated. */}});
+  }
+  chooseWorkspaceSection(section:string):void {
+    this.workspaceSection=section;
+    if(STAGES.some(stage=>stage.id===section))this.chooseStage(section);
+  }
+  loadBaselinePreflight(pid:string):void {
+    this.api.baselinePreflight(pid).subscribe({next:r=>{
+      if(this.selected?.id===pid)this.baselinePreflight=r;
+    },error:()=>{/* Not authorized or baseline not ready. */}});
+  }
+  authorizeExecution(approved:boolean):void {
+    if(!this.selected||this.baselineBusy)return;
+    const pid=this.selected.id;this.baselineBusy=true;
+    this.api.baselineConsent(pid,approved).subscribe({next:()=>{
+      this.baselineBusy=false;this.loadBaselinePreflight(pid);this.refreshSelected();
+      this.toast(approved?'Autorización para pruebas en worker registrada.':'Ejecución de pruebas revocada; resultados dependientes invalidados.');
+    },error:e=>{this.baselineBusy=false;this.showError(e);}});
+  }
+  generateTestSuggestions():void {
+    if(!this.selected||this.baselineBusy)return;
+    const pid=this.selected.id;this.baselineBusy=true;
+    this.api.baselineSuggestions(pid).subscribe({next:r=>{
+      this.baselineBusy=false;this.loadBaselinePreflight(pid);
+      this.toast(r.proposals.length?'Propuestas generadas; revísalas antes de aprobar.':'No se generaron propuestas. El modo Demo no inventa casos de IA.');
+    },error:e=>{this.baselineBusy=false;this.showError(e);}});
+  }
+  decideTestProposal(id:string,approved:boolean):void {
+    if(!this.selected)return;
+    const pid=this.selected.id;
+    this.api.baselineReview(pid,id,approved).subscribe({next:()=>{
+      this.loadBaselinePreflight(pid);this.toast(approved?'Caso propuesto aprobado (aún no se ejecuta automáticamente).':'Propuesta descartada.');
+    },error:e=>this.showError(e)});
+  }
+  loadPacks(pid:string):void {
+    this.api.migrationPacks(pid).subscribe({next:r=>{if(this.selected?.id===pid)this.packs=r;},error:()=>{/* existing endpoints stay available */}});
+  }
+  waveDecision(wid:string,approved:boolean):void {
+    if(!this.selected)return;const pid=this.selected.id;
+    this.api.decideWave(pid,wid,approved).subscribe({next:r=>{
+      this.blueprint=r;this.blueprintDraft=structuredClone(r.data);this.refreshSelected();this.loadBaselinePreflight(pid);
+      this.toast(approved?'Wave aprobada y seleccionada. Puedes ejecutar Baseline.':'Wave rechazada.');
+    },error:e=>this.showError(e)});
+  }
+  selectWave(wid:string):void {
+    if(!this.selected)return;const pid=this.selected.id;
+    this.api.selectWave(pid,wid).subscribe({next:r=>{
+      this.blueprint=r;this.refreshSelected();this.loadBaselinePreflight(pid);this.toast('Wave seleccionada; baseline anterior invalidado.');
+    },error:e=>this.showError(e)});
+  }
+  updateBlueprintDraft(data:BlueprintData):void {
+    this.blueprintDraft={...data,waves:data.waves.map(w=>({...w,files:[...w.files],depends_on:[...w.depends_on]}))};
+  }
+  saveBlueprint():void {
+    if(!this.selected||!this.blueprintDraft||this.blueprintSaving)return;
+    const pid=this.selected.id;this.blueprintSaving=true;
+    this.api.editBlueprint(pid,this.blueprintDraft).subscribe({next:r=>{
+      this.blueprintSaving=false;this.blueprint=r;this.blueprintDraft=structuredClone(r.data);this.loadPacks(pid);
+      this.toast('Blueprint guardado como revisión '+r.revision+'. Las aprobaciones anteriores ya no aplican.');
+      this.refreshSelected();this.openArtifact('blueprint.md');
+    },error:e=>{this.blueprintSaving=false;this.showError(e);}});
+  }
   planDecision(approved:boolean): void {
     if (!this.selected) return;
     this.api.plan(this.selected.id,approved).subscribe({
-      next:()=>{this.toast(approved?'Plan aprobado. Ya puedes preparar el baseline.':'Plan rechazado.');this.refreshSelected();},
+      next:()=>{this.toast(approved?'Blueprint aprobado. Revisa y aprueba una wave antes de preparar el baseline.':'Plan rechazado.');this.refreshSelected();this.loadBlueprint(this.selected!.id);},
       error:e=>this.showError(e)
     });
   }

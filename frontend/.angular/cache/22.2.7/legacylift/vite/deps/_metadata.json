@@ -1,55 +1,55 @@
 {
-  "hash": "4a8aab09",
+  "hash": "d1e8871e",
   "configHash": "a0532ab7",
-  "lockfileHash": "cc72cd8c",
-  "browserHash": "2aeb81e3",
+  "lockfileHash": "836f172d",
+  "browserHash": "d8380879",
   "optimized": {
     "@angular/common": {
       "src": "../../../../../../node_modules/@angular/common/fesm2022/common.mjs",
       "file": "@angular_common.js",
-      "fileHash": "25a44dd8",
+      "fileHash": "9727dfb1",
       "needsInterop": false
     },
     "@angular/common/http": {
       "src": "../../../../../../node_modules/@angular/common/fesm2022/http.mjs",
       "file": "@angular_common_http.js",
-      "fileHash": "85ac18fd",
+      "fileHash": "c129889f",
       "needsInterop": false
     },
     "@angular/core": {
       "src": "../../../../../../node_modules/@angular/core/fesm2022/core.mjs",
       "file": "@angular_core.js",
-      "fileHash": "f3bf8a6a",
+      "fileHash": "0939b47b",
       "needsInterop": false
     },
     "@angular/forms": {
       "src": "../../../../../../node_modules/@angular/forms/fesm2022/forms.mjs",
       "file": "@angular_forms.js",
-      "fileHash": "00e55d26",
+      "fileHash": "2834892f",
       "needsInterop": false
     },
     "@angular/platform-browser": {
       "src": "../../../../../../node_modules/@angular/platform-browser/fesm2022/platform-browser.mjs",
       "file": "@angular_platform-browser.js",
-      "fileHash": "0bd98f11",
+      "fileHash": "33d6a8ec",
       "needsInterop": false
     },
     "marked": {
       "src": "../../../../../../node_modules/marked/lib/marked.esm.js",
       "file": "marked.js",
-      "fileHash": "cac5eecc",
+      "fileHash": "8cd39b18",
       "needsInterop": false
     },
     "rxjs": {
       "src": "../../../../../../node_modules/rxjs/dist/esm5/index.js",
       "file": "rxjs.js",
-      "fileHash": "6dd12081",
+      "fileHash": "0dce7387",
       "needsInterop": false
     },
     "zone.js": {
       "src": "../../../../../../node_modules/zone.js/fesm2015/zone.js",
       "file": "zone__js.js",
-      "fileHash": "36f4feec",
+      "fileHash": "b35db199",
       "needsInterop": true
     }
   },
