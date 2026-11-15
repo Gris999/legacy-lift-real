@@ -104,7 +104,7 @@ func EnsureLocalAI(root, wantModel string) (string, error) {
 			"large": map[string]any{"provider": "ollama", "model": model},
 			"small": map[string]any{"provider": "ollama", "model": model},
 		},
-		"options": map[string]any{"progress": false},
+		"options": map[string]any{"progress": false, "request_timeout": 900},
 	}
 	b, _ := json.MarshalIndent(cfg, "", "  ")
 	if err := os.WriteFile(filepath.Join(root, "crush.json"), b, 0o644); err != nil {
