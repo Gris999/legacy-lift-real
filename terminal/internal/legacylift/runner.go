@@ -41,6 +41,9 @@ type Runner struct {
 	Root   string
 	Phases []Phase
 	Agent  Agent
+	// Lite runs phases without agent tools: Go gathers code, tests and
+	// diffs and the model only writes the report (for small local models).
+	Lite bool
 }
 
 // skipCopy are top-level entries never copied into the candidate.
@@ -130,9 +133,11 @@ func (r *Runner) Run(ctx context.Context, send func(Event)) error {
 		// retry once with an explicit reminder before failing the phase.
 		for attempt := 1; attempt <= 2; attempt++ {
 			prompt := ph.Prompt(prev)
+			if r.Lite {
+				prompt = r.LitePrompt(ctx, ph)
+			}
 			if attempt > 1 {
-				prompt += "\n\nIMPORTANTE: el intento anterior no dejó resultado. Escribe ahora el archivo `" +
-					ph.Artifact() + "` con la herramienta de escritura, o responde con el contenido completo en Markdown."
+				prompt += "\n\nIMPORTANTE: el intento anterior no dejó un resultado válido. Responde ahora con el informe completo en Markdown, en español."
 				send(Event{Index: i, Status: Running, Chunk: "\n— reintentando la fase —\n"})
 			}
 			w.buf.Reset()
@@ -149,9 +154,23 @@ func (r *Runner) Run(ctx context.Context, send func(Event)) error {
 		}
 		// If the model answered but did not write the artifact itself,
 		// keep its answer as the artifact so nothing is lost.
-		if !validMarkdown(readFile(art)) {
+		if r.Lite && ph.ID == "modernize" {
+			changed := ApplyFiles(r.Root, w.buf.String())
+			note := "\n\n## Archivos aplicados en la candidata\n"
+			if len(changed) == 0 {
+				note += "Ninguno: el modelo no devolvió archivos válidos.\n"
+			}
+			for _, c := range changed {
+				note += "- `" + c + "`\n"
+			}
+			w.buf.WriteString(note)
+		}
+		if r.Lite || !validMarkdown(readFile(art)) {
 			if out := cleanOutput(w.buf.String()); validMarkdown(out) {
-				_ = os.WriteFile(art, []byte("# "+ph.Title+"\n\n"+out+"\n"), 0o644)
+				if !strings.HasPrefix(out, "#") {
+					out = "# " + ph.Title + "\n\n" + out
+				}
+				_ = os.WriteFile(art, []byte(out+"\n"), 0o644)
 			} else {
 				err := fmt.Errorf("la fase no produjo un resultado válido en %s (el modelo puede ser demasiado pequeño: prueba otro con --model)", ph.Artifact())
 				send(Event{Index: i, Status: Failed, Err: err, Took: took})

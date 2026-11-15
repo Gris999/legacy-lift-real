@@ -38,6 +38,18 @@ cd /ruta/al/sistema-legado
 
 Elegir modelo: `legacylift --model ollama/qwen3.5:9b` o `LEGACYLIFT_MODEL=qwen3.5:9b legacylift`.
 
+## Modo liviano (automático con Ollama)
+
+Los modelos locales chicos (4B–9B) no manejan bien el prompt largo de Crush ni sus 30+ herramientas.
+Con Ollama se activa el **modo liviano**: el programa lee el código (con números de línea), corre las
+pruebas y calcula el diff, y la IA solo analiza y escribe cada informe. En Modernize la IA devuelve el
+archivo completo y el programa lo guarda solo en `.legacylift/candidate/`.
+Forzar: `--lite` (también con nube) o `--full` (modo agente completo).
+
+Prueba real con `qwen3.5:9b` (Apple M5, 16 GB) sobre `demo-source`: las 7 fases completas en ~30 min;
+Understand encontró las 3 reglas de negocio, Modernize refactorizó `calculator.py` y Verify confirmó
+que las 3 pruebas pasan sobre la candidata.
+
 ## Usar con proveedores en la nube
 
 Funcionan todos los proveedores de Crush (Anthropic, OpenAI, OpenRouter, Gemini, Groq, …):

@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
+	"github.com/charmbracelet/crush/internal/config"
 	"github.com/charmbracelet/crush/internal/event"
 	"github.com/charmbracelet/crush/internal/legacylift"
 	"github.com/charmbracelet/crush/internal/workspace"
@@ -18,6 +20,8 @@ func init() {
 	rootCmd.Flags().String("until", "", "Last phase to run")
 	rootCmd.Flags().StringP("model", "m", "", "Model to use: 'model' or 'provider/model'. Local Ollama is used automatically when no provider is configured")
 	rootCmd.Flags().Bool("plain", false, "Print progress lines instead of the TUI")
+	rootCmd.Flags().Bool("lite", false, "Lite mode for small models: no agent tools, short prompts (default with Ollama)")
+	rootCmd.Flags().Bool("full", false, "Full agent mode with tools even for local models")
 	rootCmd.AddCommand(phasesListCmd)
 }
 
@@ -43,6 +47,8 @@ func runPhases(cmd *cobra.Command) error {
 	until, _ := cmd.Flags().GetString("until")
 	modelFlag, _ := cmd.Flags().GetString("model")
 	plain, _ := cmd.Flags().GetBool("plain")
+	liteFlag, _ := cmd.Flags().GetBool("lite")
+	fullFlag, _ := cmd.Flags().GetBool("full")
 
 	root, err := ResolveCwd(cmd)
 	if err != nil {
@@ -85,10 +91,26 @@ func runPhases(cmd *cobra.Command) error {
 	}
 	app := ws.(*workspace.AppWorkspace).App()
 
+	// Lite mode: on by default for local Ollama models, which cannot cope
+	// with Crush's long system prompt and 30+ tool schemas.
+	cfg := ws.Config()
+	usesOllama := strings.HasPrefix(modelFlag, "ollama/")
+	if modelFlag == "" && cfg.Models != nil {
+		usesOllama = cfg.Models["large"].Provider == "ollama"
+	}
+	lite := !fullFlag && (liteFlag || usesOllama)
+	if lite {
+		_ = os.Setenv("LEGACYLIFT_LITE", "1")
+		if a, ok := cfg.Agents[config.AgentCoder]; ok {
+			a.AllowedTools = []string{}
+			cfg.Agents[config.AgentCoder] = a
+		}
+	}
+
 	agent := func(ctx context.Context, prompt string, w io.Writer) error {
 		return app.RunNonInteractive(ctx, w, prompt, modelFlag, "", "", true, "", false)
 	}
-	runner := &legacylift.Runner{Root: root, Phases: phases, Agent: agent}
+	runner := &legacylift.Runner{Root: root, Phases: phases, Agent: agent, Lite: lite}
 
 	modelName := modelFlag
 	if modelName == "" {
@@ -100,9 +122,15 @@ func runPhases(cmd *cobra.Command) error {
 	}
 
 	if plain || !term.IsTerminal(os.Stdout.Fd()) {
+		if lite {
+			fmt.Fprintln(cmd.OutOrStdout(), "modo liviano (IA local): sin herramientas del agente")
+		}
 		return legacylift.RunPlain(cmd.Context(), runner, func(s string) { fmt.Fprintln(cmd.OutOrStdout(), s) })
 	}
 	restoreStderr, _ := detachStderr()
 	defer restoreStderr()
+	if lite {
+		modelName += " · modo liviano"
+	}
 	return legacylift.RunTUI(cmd.Context(), runner, modelName)
 }

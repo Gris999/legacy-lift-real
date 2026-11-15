@@ -169,3 +169,83 @@ func TestValidMarkdown(t *testing.T) {
 		t.Fatal("markdown report must be accepted")
 	}
 }
+
+func TestLiteHelpers(t *testing.T) {
+	root := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(root, "tests"), 0o755)
+	_ = os.WriteFile(filepath.Join(root, "calc.py"), []byte("def f():\n    return 1\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(root, "tests", "test_calc.py"), []byte("import unittest\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(root, "crush.json"), []byte("{}"), 0o644)
+
+	code := CollectCode(root, 10000)
+	if !strings.Contains(code, "### ARCHIVO: calc.py") || !strings.Contains(code, "2|     return 1") {
+		t.Fatalf("code:\n%s", code)
+	}
+	if strings.Contains(code, "crush.json") {
+		t.Fatal("config file leaked into code context")
+	}
+	if !strings.Contains(code, "COBERTURA: 2 de 2") {
+		t.Fatalf("coverage missing:\n%s", code)
+	}
+	if cmd := TestCommand(root); len(cmd) == 0 || cmd[0] != "python3" {
+		t.Fatalf("test command = %v", cmd)
+	}
+
+	cand := filepath.Join(root, Dir, "candidate")
+	_ = os.MkdirAll(cand, 0o755)
+	_ = os.WriteFile(filepath.Join(cand, "calc.py"), []byte("old\n"), 0o644)
+	answer := "### ARCHIVO: calc.py\n```python\n1| def f():\n2|     return 2\n```\n" +
+		"### ARCHIVO: ../escape.py\n```\nx\n```\n### ARCHIVO: new.py\n```\nx\n```\n"
+	changed := ApplyFiles(root, answer)
+	if len(changed) != 1 || changed[0] != "calc.py" {
+		t.Fatalf("changed = %v", changed)
+	}
+	b, _ := os.ReadFile(filepath.Join(cand, "calc.py"))
+	if string(b) != "def f():\n    return 2\n" {
+		t.Fatalf("applied = %q", b)
+	}
+	if _, err := os.Stat(filepath.Join(root, Dir, "escape.py")); err == nil {
+		t.Fatal("path escape was written")
+	}
+}
+
+func TestRunnerLiteSendsCodeAndAppliesModernize(t *testing.T) {
+	root := t.TempDir()
+	_ = os.WriteFile(filepath.Join(root, "app.py"), []byte("print('viejo')\n"), 0o644)
+	all, _ := Phases()
+	var prompts []string
+	report := "\n\n" + strings.Repeat("- punto con evidencia app.py:1\n", 12)
+	r := &Runner{Root: root, Phases: all, Lite: true, Agent: func(_ context.Context, prompt string, w io.Writer) error {
+		prompts = append(prompts, prompt)
+		if strings.Contains(prompt, "/ MODERNIZE") {
+			fmt.Fprint(w, "### ARCHIVO: app.py\n```\nprint('nuevo')\n```\n## Resumen"+report)
+			return nil
+		}
+		fmt.Fprint(w, "# Informe"+report)
+		return nil
+	}}
+	if err := r.Run(context.Background(), func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(prompts[0], "1| print('viejo')") {
+		t.Fatalf("discover prompt lacks code:\n%s", prompts[0])
+	}
+	if !strings.Contains(prompts[1], "Resultado previo: DISCOVER") {
+		t.Fatal("understand prompt lacks previous artifact")
+	}
+	b, _ := os.ReadFile(filepath.Join(root, Dir, "candidate", "app.py"))
+	if string(b) != "print('nuevo')\n" {
+		t.Fatalf("candidate = %q", b)
+	}
+	orig, _ := os.ReadFile(filepath.Join(root, "app.py"))
+	if string(orig) != "print('viejo')\n" {
+		t.Fatal("original modified")
+	}
+	if !strings.Contains(prompts[6], "candidata/app.py") || !strings.Contains(prompts[6], "+print('nuevo')") {
+		t.Fatalf("verify prompt lacks diff:\n%s", prompts[6])
+	}
+	mod, _ := os.ReadFile(filepath.Join(root, ".legacylift", "06-modernize.md"))
+	if !strings.Contains(string(mod), "Archivos aplicados") {
+		t.Fatalf("modernize artifact = %s", mod)
+	}
+}
