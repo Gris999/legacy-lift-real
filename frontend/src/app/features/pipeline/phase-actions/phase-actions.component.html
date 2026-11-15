@@ -19,9 +19,8 @@
                 <div class="decision-actions"><button llButton variant="primary" type="button" (click)="vm.planDecision(true)"><ll-icon name="check" size="sm"/> Aprobar plan</button>
                   <button llButton variant="secondary" type="button" (click)="vm.planDecision(false)">Rechazar</button></div></div>
               <div class="decision-result" *ngIf="p.plan_approved!==null && p.plan_approved!==undefined && !vm.planReady"><span>Plan</span><ll-status-badge [status]="p.plan_approved===1?'approved':'rejected'"/></div>
-              <div class="decision-block" *ngIf="vm.decisionReady"><p>Compara la evidencia. Acepta solamente si la verificación es suficiente.</p>
-                <div class="decision-actions"><button llButton variant="primary" type="button" (click)="vm.migrationDecision(true)"><ll-icon name="check" size="sm"/> Aprobar</button>
-                  <button llButton variant="danger" type="button" (click)="vm.migrationDecision(false)"><ll-icon name="undo" size="sm"/> Rechazar</button></div></div>
+              <div class="decision-block" *ngIf="vm.decisionReady"><p>Compara la evidencia antes de decidir. La aprobación se realiza dentro de Verify.</p>
+                <button llButton variant="secondary" type="button" (click)="vm.chooseWorkspaceSection('verify')">Revisar resultado y decidir</button></div>
               <div class="decision-result" *ngIf="p.migration_decision"><span>Migración</span><ll-status-badge [status]="p.migration_decision"/></div>
             </section>
             <section class="safe-note"><ll-icon name="shield" size="lg"/><div><strong>Modernización controlada</strong><p>El plan requiere aprobación y los resultados se pueden revisar antes de aceptarlos.</p></div></section>

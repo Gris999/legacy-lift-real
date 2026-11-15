@@ -2,7 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Subscription, interval } from 'rxjs';
 import { marked } from 'marked';
-import { ApiService, Project, Provider, Run, Snapshot, IngestJob, DiscoverData, ScanProgress, SourceFile, ReviewItem, AssessmentData, Blueprint, BlueprintData, PackCatalog, MigrationWave, BaselinePreflight } from '../api/api.service';
+import { ApiService, Project, Provider, Run, Snapshot, IngestJob, DiscoverData, ScanProgress, SourceFile, ReviewItem, AssessmentData, Blueprint, BlueprintData, PackCatalog, MigrationWave, BaselinePreflight, MigrationAttempt, MigrationReviewSummary } from '../api/api.service';
 import { StageView } from '../models/pipeline-stage';
 import { ThemeService } from '../theme/theme.service';
 import { AuthSessionService } from '../auth/auth-session.service';
@@ -115,6 +115,25 @@ export class WorkspaceFacade {
   private readonly _blueprintSaving = signal<boolean>(false);
   get blueprintSaving():boolean{return this._blueprintSaving();}
   set blueprintSaving(value:boolean){this._blueprintSaving.set(value);}
+  private readonly _migrationAttempts=signal<MigrationAttempt[]>([]);
+  get migrationAttempts():MigrationAttempt[]{return this._migrationAttempts();}
+  set migrationAttempts(v:MigrationAttempt[]){this._migrationAttempts.set(v);}
+  private readonly _migrationReview=signal<MigrationReviewSummary|null>(null);
+  get migrationReview():MigrationReviewSummary|null{return this._migrationReview();}
+  set migrationReview(v:MigrationReviewSummary|null){this._migrationReview.set(v);}
+  private readonly _migrationDiffFile=signal<string>('');
+  get migrationDiffFile():string{return this._migrationDiffFile();}
+  set migrationDiffFile(v:string){this._migrationDiffFile.set(v);}
+  private readonly _migrationDiffText=signal<string>('');
+  get migrationDiffText():string{return this._migrationDiffText();}
+  set migrationDiffText(v:string){this._migrationDiffText.set(v);}
+  private readonly _migrationRiskReason=signal<string>('');
+  get migrationRiskReason():string{return this._migrationRiskReason();}
+  set migrationRiskReason(v:string){this._migrationRiskReason.set(v);}
+  private readonly _migrationWorkerSeen=signal<string|null>(null);
+  get migrationWorkerSeen():string|null{return this._migrationWorkerSeen();}
+  set migrationWorkerSeen(v:string|null){this._migrationWorkerSeen.set(v);}
+  get latestMigration():MigrationAttempt|undefined{return this.migrationAttempts[0];}
   private readonly _stageId = signal<string>('discover');
   get stageId(): string { return this._stageId(); }
   set stageId(value: string) { this._stageId.set(value); }
@@ -250,7 +269,7 @@ export class WorkspaceFacade {
     this.mobileNavOpen=false;this.projects=[];this.providers=[];this.selected=undefined;
     this.snapshots=[];this.ingestJobs=[];this.githubConfigured=false;this.githubLogin='';this.githubRepos=[];this.selectedRepo='';
     this.discoverData=null;this.scanProgress=null;this.sourceFiles=[];this.selectedFilePaths=new Set();
-    this.reviews=[];this.reviewDraft={};this.assessmentData=null;this.assessmentProgress=null;this.blueprint=null;this.blueprintDraft=null;this.packs=null;this.baselinePreflight=null;this.workspaceSection='source';
+    this.reviews=[];this.reviewDraft={};this.assessmentData=null;this.assessmentProgress=null;this.blueprint=null;this.blueprintDraft=null;this.packs=null;this.baselinePreflight=null;this.migrationAttempts=[];this.migrationReview=null;this.migrationDiffFile='';this.migrationDiffText='';this.migrationRiskReason='';this.migrationWorkerSeen=null;this.workspaceSection='source';
     this.artifactContent='';this.artifactName='';this.rendered='';this.showCreate=false;this.showEdit=false;this.showHelp=false;
     this.createName='';this.createSystem='';this.projectQuery='';this.stageId='discover';
     this.error='';this.notice='';this.busy=false;this.uploading=false;this.analysisBusy=false;
@@ -285,7 +304,7 @@ export class WorkspaceFacade {
   get ingestRunning(): boolean { return this.ingestJobs.some(j=>j.status==='queued'||j.status==='running'); }
   get hasSource(): boolean { return !!this.selected?.snapshot_hash; }
   get planReady(): boolean { return this.latestRun('plan')?.status === 'completed' && this.selected?.plan_approved == null; }
-  get decisionReady(): boolean { return this.latestRun('verify')?.status === 'completed' && !this.selected?.migration_decision; }
+  get decisionReady(): boolean { return this.latestMigration?.verify_status==='completed' && !!this.latestMigration?.verification && !this.latestMigration?.decision; }
   get isAnyRunning(): boolean { return !!this.selected?.runs?.some(r => r.status === 'running'); }
   get stageRunnable(): boolean { return !!this.selected?.phase_ready?.[this.stageId] && !this.isAnyRunning; }
   get chosenProvider(): Provider | undefined { return this.providers.find(p => p.id === this.selected?.provider); }
@@ -419,7 +438,7 @@ export class WorkspaceFacade {
     this.selected = undefined; this.artifactContent=''; this.artifactName=''; this.stageId='discover';this.workspaceSection='source';
     this.api.project(pid).subscribe({next:p=>{
       if(this.session.token!==token || requestId!==this.selectedRequestId) return;
-      this.selected=p; this.pickFirstArtifact(); this.loadSnapshots(pid);this.loadJobs(pid);this.loadDiscover(pid);this.loadAnalysisControls(pid);this.loadReviews(pid);this.loadAssessment(pid);this.loadBlueprint(pid);this.loadBaselinePreflight(pid);this.loadBaselinePreflight(pid);this.connectEvents(pid);
+      this.selected=p; this.pickFirstArtifact(); this.loadSnapshots(pid);this.loadJobs(pid);this.loadDiscover(pid);this.loadAnalysisControls(pid);this.loadReviews(pid);this.loadAssessment(pid);this.loadBlueprint(pid);this.loadBaselinePreflight(pid);this.loadMigration(pid);this.connectEvents(pid);
     },error:e=>{if(this.session.token===token)this.showError(e);}});
   }
   refreshSelected(silent=false): void {
@@ -432,6 +451,7 @@ export class WorkspaceFacade {
       const sourceChanged=updated.active_snapshot_id!==this.selected.active_snapshot_id;
       this.selected=updated;
       if (!silent || sourceChanged) { this.loadSnapshots(pid);this.loadJobs(pid); }
+      this.loadMigration(pid);
       if (sourceChanged) {this.blueprint=null;this.blueprintDraft=null;this.baselinePreflight=null;this.pickFirstArtifact();this.loadDiscover(pid);this.loadAnalysisControls(pid);this.loadReviews(pid);this.loadAssessment(pid);}
       if (hadRunning && !this.isAnyRunning) {
         if (this.activeRun?.status === 'completed') {
@@ -504,6 +524,7 @@ export class WorkspaceFacade {
                 if(evt.kind==='analysis' && evt.payload?.phase==='assess') this.loadAssessment(pid);
                 if(evt.kind==='wave'||evt.kind==='baseline')this.loadBaselinePreflight(pid);
                 if(evt.kind==='blueprint') this.loadBlueprint(pid);
+                if(evt.kind==='migration'||evt.kind==='verify'||evt.kind==='migration-review')this.loadMigration(pid);
                 if(evt.kind==='analysis-stage') this.assessmentProgress=evt.payload;
               } catch { /* Ignore malformed event; polling is the fallback. */ }
             }
@@ -709,12 +730,58 @@ export class WorkspaceFacade {
       error:e=>this.showError(e)
     });
   }
-  migrationDecision(approved:boolean): void {
-    if (!this.selected) return;
-    this.api.decision(this.selected.id,approved).subscribe({
-      next:()=>{this.toast(approved?'Migración aprobada y lista para exportar.':'Migración rechazada. Candidato descartado.');this.refreshSelected();},
-      error:e=>this.showError(e)
-    });
+  loadMigration(pid:string):void {
+    this.api.migrationAttempts(pid).subscribe({next:r=>{
+      if(this.selected?.id!==pid)return;
+      const previous=this.latestMigration?.id;
+      this.migrationAttempts=r.attempts;
+      this.migrationWorkerSeen=r.worker?.last_seen ?? null;
+      const active=this.latestMigration;
+      if(!active || active.status!=='completed') {this.migrationReview=null;this.migrationDiffFile='';this.migrationDiffText='';return;}
+      if(previous!==active.id){this.migrationDiffFile='';this.migrationDiffText='';}
+      if(previous!==active.id || !this.migrationReview) {
+        this.api.migrationReview(pid,active.id).subscribe({next:s=>{
+          if(this.selected?.id===pid && this.latestMigration?.id===active.id)this.migrationReview=s;
+        },error:()=>{if(this.latestMigration?.id===active.id)this.migrationReview=null;}});
+      }
+    },error:()=>{/* The classic pipeline still loads if the migration extension is unavailable. */}});
+  }
+  showMigrationDiff(path:string):void {
+    if(!this.selected||!this.latestMigration)return;
+    if(this.migrationDiffFile===path){this.migrationDiffFile='';this.migrationDiffText='';return;}
+    const aid=this.latestMigration.id;this.migrationDiffFile=path;this.migrationDiffText='Cargando...';
+    this.api.migrationDiff(this.selected.id,aid,path).subscribe({next:r=>{
+      if(this.latestMigration?.id===aid&&this.migrationDiffFile===path)this.migrationDiffText=r.diff;
+    },error:e=>this.showError(e)});
+  }
+  setMigrationFile(path:string,selected:boolean,comment:string):void {
+    if(!this.selected||!this.latestMigration)return;
+    const pid=this.selected.id,aid=this.latestMigration.id;
+    this.api.migrationSetReview(pid,aid,path,selected,comment).subscribe({next:r=>{
+      if(this.latestMigration?.id===aid){this.migrationReview=r;this.loadMigration(pid);this.toast('Revisión guardada. Ejecuta Verify nuevamente si cambiaste archivos.');}
+    },error:e=>this.showError(e)});
+  }
+  retryMigration():void {
+    if(!this.selected||!this.latestMigration)return;
+    const pid=this.selected.id;
+    this.api.migrationRetry(pid,this.latestMigration.id).subscribe({next:()=>{
+      this.toast('Nuevo intento encolado; requiere el worker separado.');this.refreshSelected();this.loadMigration(pid);
+    },error:e=>this.showError(e)});
+  }
+  migrationDecision(approved:boolean):void {
+    if(!this.selected||!this.latestMigration)return;
+    this.api.decision(this.selected.id,approved,this.migrationRiskReason).subscribe({next:()=>{
+      this.toast(approved?'Candidato aprobado. Puedes descargar ZIP, parche e informe.':'Intento rechazado. Se conserva el historial.');
+      this.migrationRiskReason='';this.refreshSelected();this.loadMigration(this.selected!.id);
+    },error:e=>this.showError(e)});
+  }
+  downloadMigration(format:'zip'|'patch'|'report'):void {
+    if(!this.selected)return;
+    this.api.migrationDelivery(this.selected.id,format).subscribe({next:blob=>{
+      const url=URL.createObjectURL(blob),a=document.createElement('a');
+      a.href=url;a.download=format==='zip'?'legacylift-entrega.zip':format==='patch'?'legacylift-changes.patch':'legacylift-report.md';
+      a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    },error:e=>this.showError(e)});
   }
   openArtifact(filename:string): void {
     if (!this.selected) return;

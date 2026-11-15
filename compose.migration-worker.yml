@@ -1,0 +1,28 @@
+# Start with: docker compose -f compose.migration-worker.yml up --build
+# No host socket, no privileged mode. Production should use a dedicated VM with isolated storage and restricted egress.
+services:
+  migration-worker:
+    build:
+      context: .
+      dockerfile: docker/migration-worker/Dockerfile
+    init: true
+    restart: unless-stopped
+    read_only: true
+    pids_limit: 128
+    cpus: '1.5'
+    mem_limit: 768m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    volumes:
+      - ./data:/workspace/data:rw
+      # Optional: bind-mount a separate authenticated Codex home read-only for Codex CLI.
+    environment:
+      LEGACYLIFT_ENV: development
+      LEGACYLIFT_MIGRATION_WORKER_MODE: separate
+      LEGACYLIFT_DATA_DIR: /workspace/data
+      LEGACYLIFT_MAX_MIGRATION_ATTEMPTS: ${LEGACYLIFT_MAX_MIGRATION_ATTEMPTS:-3}
+      CLAUDE_API_KEY: ${CLAUDE_API_KEY:-}
+      CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-sonnet-5}
+      CODEX_BIN: codex

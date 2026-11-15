@@ -17,7 +17,7 @@ def _activate(pid: str, sid: str, name: str, digest: str) -> None:
     db.snapshot_set_active(pid,sid,name,digest)
 
 
-def import_staged(pid: str, staged: Path, origin_type: str, reference: str, commit: str | None=None) -> dict:
+def import_staged(pid: str, staged: Path, origin_type: str, reference: str, commit: str | None=None, progress=None) -> dict:
     _current_runs(pid)
     sid=str(uuid.uuid4())
     manifest=workspace.create_manifest(staged)
@@ -31,7 +31,7 @@ def import_staged(pid: str, staged: Path, origin_type: str, reference: str, comm
         # Automatic scanning; no separate manual Discover click required.
         rid=db.run_create(pid,'discover','scanner')
         try:
-            summary,info=pipeline.perform(pid,'discover')
+            summary,info=pipeline.perform(pid,'discover',progress=progress)
             db.run_complete(rid,summary,info)
         except Exception as exc:
             db.run_fail(rid,str(exc))
@@ -43,17 +43,17 @@ def import_staged(pid: str, staged: Path, origin_type: str, reference: str, comm
         raise
 
 
-def ingest_zip(pid: str, payload: bytes, filename: str) -> dict:
+def ingest_zip(pid: str, payload: bytes, filename: str, progress=None) -> dict:
     staged=workspace.stage_zip(pid,payload)
-    return import_staged(pid,staged,'zip',filename)
+    return import_staged(pid,staged,'zip',filename,progress=progress)
 
 
-def ingest_git(pid: str, uid: str, full_name: str) -> dict:
+def ingest_git(pid: str, uid: str, full_name: str, progress=None) -> dict:
     checkout=workspace.root(pid)/('git-download-'+uuid.uuid4().hex)
     try:
         sha=github.clone(uid,full_name,checkout)
         staged=workspace.stage_git_folder(pid,checkout)
-        return import_staged(pid,staged,'github',full_name,sha)
+        return import_staged(pid,staged,'github',full_name,sha,progress=progress)
     finally:
         shutil.rmtree(checkout,ignore_errors=True)
 

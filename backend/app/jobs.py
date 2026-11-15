@@ -20,6 +20,11 @@ def _process(pid: str, jid: str) -> None:
         return
     input_data=current['input']
     kind=current['kind']
+    def scanning(event: dict) -> None:
+        # Bounded progress updates with counts; never stream source contents.
+        amount=40+int(event['percent']*0.5)
+        db.job_update(pid,jid,'running','scanning',amount)
+        db.project_event(pid,'analysis-progress',{'job_id':jid,**event})
     try:
         if kind=='zip':
             input_path=Path(input_data['path'])
@@ -27,10 +32,10 @@ def _process(pid: str, jid: str) -> None:
                 raise ValueError('Archivo ZIP temporal no disponible; vuelve a subirlo')
             payload=input_path.read_bytes()
             db.job_update(pid,jid,'running','extracting',30)
-            result=ingestion.ingest_zip(pid,payload,input_data['filename'])
+            result=ingestion.ingest_zip(pid,payload,input_data['filename'],progress=scanning)
         elif kind=='github':
             db.job_update(pid,jid,'running','cloning',25)
-            result=ingestion.ingest_git(pid,input_data['user_id'],input_data['full_name'])
+            result=ingestion.ingest_git(pid,input_data['user_id'],input_data['full_name'],progress=scanning)
         else:
             raise ValueError('Tipo de operación no soportado')
         db.job_update(pid,jid,'running','indexing',90)

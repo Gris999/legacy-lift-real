@@ -72,17 +72,28 @@ def test_pipeline_end_to_end(client):
         rid=db.run_create(pid,stage,'demo')
         db.run_complete(rid,summary,details)
     assert client.post(f'/api/projects/{pid}/phases/baseline',headers=headers()).status_code == 409
+    blueprint=client.get(f'/api/projects/{pid}/blueprints/current',headers=headers()).json()['blueprint']['data']
+    # A human chooses an executable Refactor strategy before approval.
+    blueprint['waves'][0]['strategy']='Refactor'
+    assert client.patch(f'/api/projects/{pid}/blueprints/current',headers=headers(),json={'data':blueprint}).status_code==200
     assert client.post(f'/api/projects/{pid}/plan/decision',headers=headers(),json={'approved':True}).status_code == 200
-    for stage in ('baseline','modernize','verify'):
-        summary, details = pipeline.perform(pid,stage)
-        rid=db.run_create(pid,stage,'demo')
-        db.run_complete(rid,summary,details)
+    wave_approval=client.post(f'/api/projects/{pid}/blueprints/current/waves/wave-01/decision',headers=headers(),json={'approved':True})
+    assert wave_approval.status_code==200,wave_approval.text
+    summary, details = pipeline.perform(pid,'baseline')
+    rid=db.run_create(pid,'baseline','demo');db.run_complete(rid,summary,details)
+    from app import migration_runs, migration_verify
+    enqueue=client.post(f'/api/projects/{pid}/phases/modernize',headers=headers())
+    assert enqueue.status_code == 200,enqueue.text
+    assert migration_runs.run_one()['status']=='completed'
+    verify_request=client.post(f'/api/projects/{pid}/phases/verify',headers=headers())
+    assert verify_request.status_code == 200,verify_request.text
+    assert migration_verify.run_one()['verify_status']=='completed'
     assert 'return x + 1' in (workspace.project_candidate(pid)/'calculator.py').read_text()
     assert 'return (x + 1)' in (workspace.project_source(pid)/'calculator.py').read_text()
     assert client.get(f'/api/projects/{pid}/artifacts/changes.patch', headers=headers()).status_code == 200
     verify = db.last_run(pid,'verify')
-    assert verify['data']['result'] == 'insufficient_evidence'
-    assert client.post(f'/api/projects/{pid}/migration/decision', headers=headers(),json={'approved': True}).status_code == 200
+    assert verify['data']['classification'] == 'not_demonstrated'
+    assert client.post(f'/api/projects/{pid}/migration/decision', headers=headers(),json={'approved': True,'reason':'Acepto el riesgo del ejemplo sin tests de comportamiento comparables.'}).status_code == 200
     response=client.get(f'/api/projects/{pid}/export',headers=headers())
     assert response.status_code == 200
     with zipfile.ZipFile(io.BytesIO(response.content)) as z:

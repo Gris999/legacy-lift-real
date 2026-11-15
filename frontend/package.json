@@ -16,7 +16,8 @@
     "check:sprint2": "node scripts/check-sprint2.mjs",
     "check:session": "node scripts/check-session.mjs",
     "check:interactions": "node scripts/check-interactions.mjs",
-    "check:sprint3": "node scripts/check-sprint3.mjs"
+    "check:sprint3": "node scripts/check-sprint3.mjs",
+    "check:sprint4": "node scripts/check-sprint4.mjs"
   },
   "dependencies": {
     "@angular/common": "^22.2.0",

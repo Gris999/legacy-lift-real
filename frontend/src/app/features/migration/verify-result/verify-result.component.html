@@ -1,0 +1,43 @@
+<section class="panel verify-panel" aria-label="Verificar y decidir modernización">
+ <span class="eyebrow">SPRINT 4 · VERIFY</span><h2>Comprobar antes de aprobar</h2>
+ <p class="muted">Comparamos las pruebas y verificaciones del código original con los archivos que decidiste conservar.</p>
+ <div *ngIf="!vm.latestMigration" class="info">Todavía no hay intentos de Modernize. Ejecuta primero una wave aprobada.</div>
+ <ng-container *ngIf="vm.latestMigration as attempt">
+  <div *ngIf="attempt.status!=='completed'" class="info">Esperando a que termine Modernize.</div>
+  <ng-container *ngIf="attempt.status==='completed'">
+    <div class="info" *ngIf="!attempt.verification">
+      <strong>Verificación pendiente.</strong>
+      <p>Selecciona los archivos en Modernize y ejecuta Verify desde el panel lateral.</p>
+    </div>
+    <ng-container *ngIf="attempt.verification as v">
+      <div class="result"><span class="eyebrow">RESULTADO DE VERIFY</span>
+        <h3>{{v.classification==='verified_within_tests'?'Verificado dentro de las pruebas':v.classification==='partial'?'Evidencia parcial':v.classification==='divergent'?'Hay divergencias':'Equivalencia no demostrada'}}</h3>
+        <p>{{v.reason}}</p></div>
+      <div class="checks"><div><span>Comprobaciones originales</span><strong>{{v.static_before.total-v.static_before.failed}} / {{v.static_before.total}}</strong></div>
+        <div><span>Comprobaciones de candidato</span><strong>{{v.static_after.total-v.static_after.failed}} / {{v.static_after.total}}</strong></div>
+        <div><span>Archivos seleccionados</span><strong>{{v.files_selected}}</strong></div></div>
+      <p class="muted">{{v.limits}}</p>
+      <div *ngIf="!attempt.decision" class="decision">
+        <h3>Decisión humana</h3>
+        <label *ngIf="v.classification!=='verified_within_tests' && v.classification!=='divergent'" class="reason-label">
+          Motivo para aceptar una modernización sin equivalencia demostrada
+          <textarea rows="3" [value]="vm.migrationRiskReason" (input)="vm.migrationRiskReason=$any($event.target).value"
+            placeholder="Describe qué pruebas faltan y por qué aceptas el riesgo..."></textarea>
+          <small>Mínimo 20 caracteres para aprobar con evidencia parcial o insuficiente.</small>
+        </label>
+        <div class="actions"><button llButton variant="primary" type="button" (click)="vm.migrationDecision(true)"
+            [disabled]="v.classification==='divergent' || (v.classification!=='verified_within_tests' && vm.migrationRiskReason.trim().length<20)">
+            <ll-icon name="check_circle"/> Aprobar versión revisada</button>
+          <button llButton variant="danger" type="button" (click)="vm.migrationDecision(false)"><ll-icon name="cancel"/> Rechazar intento</button></div>
+        <p class="muted" *ngIf="v.classification==='divergent'">No se puede aprobar con divergencias. Puedes solicitar otra iteración en Modernize.</p>
+      </div>
+      <div *ngIf="attempt.decision==='approved'" class="decision"><h3>Versión aprobada · entregables</h3>
+        <p class="muted">La fuente original se conserva y las descargas salen de la versión revisada.</p>
+        <div class="actions"><button llButton variant="primary" type="button" (click)="vm.downloadMigration('zip')"><ll-icon name="archive"/> ZIP completo</button>
+          <button llButton variant="secondary" type="button" (click)="vm.downloadMigration('patch')"><ll-icon name="code"/> Parche .patch</button>
+          <button llButton variant="secondary" type="button" (click)="vm.downloadMigration('report')"><ll-icon name="description"/> Informe</button></div></div>
+      <div *ngIf="attempt.decision==='rejected'" class="info">Intento rechazado. Se conserva el historial y la fuente original.</div>
+    </ng-container>
+  </ng-container>
+ </ng-container>
+</section>

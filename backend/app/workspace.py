@@ -11,9 +11,15 @@ from pathlib import Path, PurePosixPath
 
 from .settings import data_dir
 
-MAX_ZIP_BYTES = 12 * 1024 * 1024
-MAX_FILES = 300
-MAX_FILE_BYTES = 1024 * 1024
+# Configurable caps, with hard safety ceilings for a local single-machine deployment.
+def _limit(name: str, default: int, ceiling: int) -> int:
+    try: return max(1, min(int(os.getenv(name, str(default))), ceiling))
+    except ValueError: return default
+
+MAX_ZIP_BYTES = _limit('LEGACYLIFT_MAX_ZIP_MB', 64, 128) * 1024 * 1024
+MAX_UNPACKED_BYTES = _limit('LEGACYLIFT_MAX_SOURCE_MB', 128, 256) * 1024 * 1024
+MAX_FILES = _limit('LEGACYLIFT_MAX_FILES', 5000, 20000)
+MAX_FILE_BYTES = _limit('LEGACYLIFT_MAX_FILE_MB', 5, 16) * 1024 * 1024
 BLOCKED_DIRS = {'.git', '.hg', '.svn', '.venv', 'venv', 'node_modules', 'dist', 'build', '__pycache__', '.idea'}
 BLOCKED_FILES = {'.env', '.env.local', 'id_rsa', 'id_ed25519', 'credentials.json', 'secrets.json'}
 
@@ -49,8 +55,8 @@ def save_artifact(pid: str, filename: str, contents: str) -> None:
 
 
 ARTIFACT_NAMES = {
-    'inventory.md', 'inventory.json', 'understand.md', 'assessment.md',
-    'blueprint.md', 'baseline.md', 'migration.md', 'changes.patch',
+    'inventory.md', 'inventory.json', 'understand.md', 'understand.json', 'assessment.md', 'assessment.json',
+    'blueprint.md', 'blueprint.json', 'baseline.md', 'baseline.json', 'migration.md', 'changes.patch',
     'verification.md', 'report.md'
 }
 
@@ -92,14 +98,14 @@ def stage_zip(pid: str, payload: bytes) -> Path:
     """Unpack into a temporary folder; never replace an existing active snapshot."""
     import io
     if len(payload) > MAX_ZIP_BYTES:
-        raise ValueError('ZIP demasiado grande (máximo 12 MB)')
+        raise ValueError('ZIP supera el límite configurado')
     tmp=_stage_path(pid)
     total=0
     try:
         with zipfile.ZipFile(io.BytesIO(payload)) as z:
             members=[i for i in z.infolist() if not i.is_dir()]
             if not members or len(members)>MAX_FILES:
-                raise ValueError('ZIP vacío o con más de 300 archivos')
+                raise ValueError(f'ZIP vacío o con más de {MAX_FILES} archivos')
             seen=set()
             for info in members:
                 rel=safe_relative(info.filename)
@@ -111,8 +117,8 @@ def stage_zip(pid: str, payload: bytes) -> Path:
                 if info.file_size>MAX_FILE_BYTES:
                     raise ValueError(f'Archivo demasiado grande: {rel}')
                 total+=info.file_size
-                if total>MAX_ZIP_BYTES:
-                    raise ValueError('Contenido descomprimido supera 12 MB')
+                if total>MAX_UNPACKED_BYTES:
+                    raise ValueError('Contenido descomprimido supera el límite configurado')
                 target=tmp/rel
                 target.parent.mkdir(parents=True,exist_ok=True)
                 if target.exists():
@@ -150,8 +156,8 @@ def stage_git_folder(pid: str, git_folder: Path) -> Path:
             if size>MAX_FILE_BYTES:
                 raise ValueError(f'Archivo demasiado grande: {rel}')
             count+=1;total+=size
-            if count>MAX_FILES or total>MAX_ZIP_BYTES:
-                raise ValueError('Repositorio supera límite: 300 archivos / 12 MB')
+            if count>MAX_FILES or total>MAX_UNPACKED_BYTES:
+                raise ValueError('Repositorio supera límite configurado')
             target=tmp/rel
             target.parent.mkdir(parents=True,exist_ok=True)
             shutil.copyfile(source,target)

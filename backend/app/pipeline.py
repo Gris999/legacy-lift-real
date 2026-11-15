@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from . import ai, db, inspection, workspace
+from .analysis import context as analysis_context, understanding, assessment
+from . import planning, migration_packs, baseline
 
 STAGES = ('discover', 'understand', 'assess', 'plan', 'baseline', 'modernize', 'verify')
 PREVIOUS = {'discover': None, 'understand': 'discover', 'assess': 'understand',
@@ -35,8 +37,19 @@ def phase_ready(pid: str, phase: str) -> tuple[bool, str]:
         return False, f'Primero completa {prev}'
     if phase in {'baseline', 'modernize', 'verify'} and project['plan_approved'] != 1:
         return False, 'Aprueba el plan antes de preparar o transformar'
-    if phase == 'verify' and not workspace.project_candidate(pid).exists():
-        return False, 'No se generó ninguna versión candidata'
+    if phase in {'understand','assess','plan','modernize'} and project['provider'] in {'codex','claude'}:
+        if not db.consent_is_active(pid,project.get('active_snapshot_id'),project['provider']):
+            return False, 'Autoriza el envío de código al proveedor de IA antes de iniciar esta fase'
+    if phase in {'baseline','modernize','verify'} and not planning.executable_wave(pid):
+        return False, 'Aprueba el Blueprint y una wave con Migration Pack compatible antes de continuar'
+    if phase == 'modernize':
+        pack=migration_packs.selected_pack(pid,planning.executable_wave(pid))
+        if pack is None or pack['status']!='available':
+            return False, 'El Migration Pack seleccionado no tiene executor'
+    if phase == 'verify':
+        from . import migration_runs
+        if not migration_runs.latest_completed(pid):
+            return False, 'Se requiere un intento de Modernize completado'
     return True, ''
 
 
@@ -57,9 +70,14 @@ def prompt_for(phase: str, pid: str) -> tuple[str, str]:
     elif phase == 'plan':
         details = artifact(pid, 'understand.md') + '\n' + artifact(pid, 'assessment.md')
     elif phase == 'modernize':
-        details = artifact(pid, 'blueprint.md') + '\n' + artifact(pid, 'baseline.md')
+        wave=planning.executable_wave(pid)
+        details='WAVE APROBADA (único alcance editable):\n'+json.dumps(wave,ensure_ascii=False) + '\n\n' + artifact(pid, 'baseline.md')
     source = workspace.project_candidate(pid) if phase == 'modernize' else workspace.project_source(pid)
-    content = workspace.read_code_context(source, limit=28000 if phase == 'modernize' else 48000)
+    if phase in {'understand','assess','plan'}:
+        batches, coverage = analysis_context.context_batches(pid,source,max_batches=2)
+        content = '\n'.join(batches) + f'\n## COBERTURA DE CÓDIGO: {coverage}\n'
+    else:
+        content = workspace.read_code_context(source, limit=28000)
     p = template + '\n\n## Contexto anterior\n' + details[:18000] + '\n\n## Código fuente\n' + content
     return p, hashlib.sha256(template.encode('utf-8')).hexdigest()[:16]
 
@@ -70,8 +88,12 @@ def start(pid: str, phase: str) -> dict:
     if not lock.acquire(blocking=False):
         raise ValueError('Ya hay una operación en ejecución para este proyecto')
     try:
+        if any(r['status']=='running' for r in db.runs_get(pid)):
+            raise ValueError('Ya hay una fase ejecutándose en este proyecto')
         if any(j['status'] in ('queued','running') for j in db.jobs_list(pid)):
             raise ValueError('Espera a que termine la ingesta en curso')
+        if phase in ('modernize','verify'):
+            raise ValueError('Modernize y Verify solo se ejecutan en el worker separado')
         allowed, reason = phase_ready(pid, phase)
         if not allowed:
             raise ValueError(reason)
@@ -83,8 +105,8 @@ def start(pid: str, phase: str) -> dict:
         # Invalidate newer phases before re-running an earlier one, keeping their history.
         successors = STAGES[STAGES.index(phase)+1:]
         db.invalidate_stages(pid, successors)
-        artifact_by_stage = {'discover':['inventory.md','inventory.json'], 'understand':['understand.md'],
-                             'assess':['assessment.md'], 'plan':['blueprint.md'], 'baseline':['baseline.md'],
+        artifact_by_stage = {'discover':['inventory.md','inventory.json'], 'understand':['understand.md','understand.json'],
+                             'assess':['assessment.md','assessment.json'], 'plan':['blueprint.md','blueprint.json'], 'baseline':['baseline.md','baseline.json'],
                              'modernize':['migration.md','changes.patch'], 'verify':['verification.md','report.md']}
         for successor in successors:
             for artifact_name in artifact_by_stage[successor]:
@@ -135,39 +157,12 @@ def _demo_text(phase: str, pid: str) -> str:
             '**Aprobación humana:** obligatoria antes de preparar baseline o modificar archivos.\n')
 
 
-def _run_tests_docker(folder: Path) -> dict:
-    if os.getenv('VALIDATION_MODE', 'static').lower() != 'docker':
-        return {'status':'not_run', 'reason':'VALIDATION_MODE=static; no se ejecutó código subido'}
-    if not shutil.which('docker'):
-        return {'status':'not_run', 'reason':'Docker no está disponible'}
-    if not (folder / 'tests').is_dir():
-        return {'status':'not_run', 'reason':'No se encontró la carpeta tests/'}
-    cmd = ['docker','run','--rm','--network','none','--read-only','--tmpfs','/tmp:rw,noexec,nosuid,size=16m',
-           '--pids-limit','64','--memory','256m','--cpus','1','--cap-drop','ALL',
-           '--security-opt','no-new-privileges','-v',f'{folder.resolve()}:/src:ro',
-           '-w','/src','python:3.12-alpine','python','-m','unittest','discover','-s','tests','-v']
-    try:
-        p = subprocess.run(cmd, text=True, encoding='utf-8', errors='replace', capture_output=True, timeout=80)
-        return {'status':'passed' if p.returncode == 0 else 'failed', 'exit_code':p.returncode,
-                'output':(p.stdout+'\n'+p.stderr)[-4000:]}
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return {'status':'not_run', 'reason':f'Docker no ejecutó las pruebas: {str(exc)[:140]}'}
-
-
-def _baseline(folder: Path) -> dict:
-    checks = inspection.static_checks(folder)
-    return {'snapshot_hash':workspace.snapshot_hash(folder), 'static_checks':inspection.check_summary(checks),
-            'details':checks[:120], 'tests':_run_tests_docker(folder)}
+def _baseline(pid: str, folder: Path) -> dict:
+    return baseline.capture(pid, folder)
 
 
 def _baseline_md(result: dict) -> str:
-    s = result['static_checks']
-    tests = result['tests']
-    return (f"# Behavioral Baseline\n\nHash SHA-256 del snapshot: `{result['snapshot_hash']}`\n\n"
-            f"## Análisis estático\n- Chequeos: {s['total']}\n- Superados: {s['passed']}\n- Fallidos: {s['failed']}\n\n"
-            f"## Pruebas de comportamiento\n- Estado: **{tests['status']}**\n"
-            f"- Nota: {tests.get('reason', 'Pruebas de la suite del repositorio en Docker')}\n\n"
-            'Este baseline es evidencia limitada; los checks sintácticos no prueban equivalencia de comportamiento.\n')
+    return baseline.markdown(result)
 
 
 def _validate_changed_paths(pid: str) -> list[str]:
@@ -182,6 +177,11 @@ def _validate_changed_paths(pid: str) -> list[str]:
     for p in changed:
         if p.suffix.lower() not in allowed or any('test' in x.lower() for x in p.parts):
             raise ValueError(f'Cambio fuera del alcance permitido: {p.as_posix()}')
+    wave=planning.executable_wave(pid)
+    if not wave:raise ValueError('Modernize exige una wave aprobada y pack compatible')
+    allowed_wave=set(wave['files'])
+    if any(p.as_posix() not in allowed_wave for p in changed):
+        raise ValueError('La IA modificó archivos fuera de la wave aprobada; se descarta el candidato')
     return [p.as_posix() for p in changed]
 
 
@@ -209,7 +209,11 @@ def _apply_claude_changes(pid: str, content: str) -> None:
 
 def _modernize_demo(pid: str) -> str:
     candidate = workspace.project_candidate(pid)
-    for p in candidate.rglob('*.py'):
+    wave=planning.executable_wave(pid)
+    if not wave:raise ValueError('No hay wave ejecutable aprobada')
+    for rel in wave['files']:
+        p=candidate/rel
+        if p.suffix!='.py':continue
         if 'test' in p.relative_to(candidate).parts or 'test' in p.name:
             continue
         old = p.read_text(encoding='utf-8')
@@ -220,29 +224,54 @@ def _modernize_demo(pid: str) -> str:
     return 'No se encontró una transformación determinista del pack safe-refactor-python.'
 
 
-def perform(pid: str, phase: str) -> tuple[str, dict]:
+def perform(pid: str, phase: str, progress=None) -> tuple[str, dict]:
     project = db.project_get(pid)
     assert project
     provider = project['provider']
     source = workspace.project_source(pid)
     if phase == 'discover':
-        info = inspection.inspect(source)
+        info = inspection.inspect(source, progress=progress)
+        project = db.project_get(pid)
+        if project and project.get('active_snapshot_id'):
+            db.analysis_put(pid, project['active_snapshot_id'], 'discover', info)
         workspace.save_artifact(pid, 'inventory.json', json.dumps(info, indent=2, ensure_ascii=False))
         workspace.save_artifact(pid, 'inventory.md', inspection.inventory_md(info))
         return f"Inventario de {info['files']} archivos y {len(info['modules'])} módulos", info
     if phase in {'understand', 'assess', 'plan'}:
+        # Defense in depth: worker/in-process calls must respect privacy too.
+        if provider in {'codex','claude'} and not db.consent_is_active(pid,project.get('active_snapshot_id'),provider):
+            raise ValueError('El proyecto requiere consentimiento explícito para enviar código a IA')
+        if phase=='understand':
+            template=(PROMPT_DIR/'understand.md').read_text(encoding='utf-8')
+            return understanding.understand(pid,provider,template,source)
+        if phase=='assess':
+            template=(PROMPT_DIR/'assess.md').read_text(encoding='utf-8')
+            return assessment.assess(pid,provider,template,source)
         prompt, _ = prompt_for(phase, pid)
-        text = _demo_text(phase, pid) if provider == 'demo' else ai.generate(provider, prompt, source)
+        if provider == 'demo':
+            text=_demo_text(phase,pid)
+        elif provider == 'codex':
+            with analysis_context.scoped_workspace(pid,source) as isolated:
+                text=ai.generate(provider,prompt,isolated)
+        else:
+            text=ai.generate(provider,prompt,source)
+        if phase == 'plan':
+            # The AI narrative is advisory. The structured blueprint is constrained by the
+            # source snapshot and remains a proposal until explicitly approved.
+            result=planning.proposal(pid,text[:30000],provider)
+            return f"Blueprint revisión {result['revision']}: {len(result['data']['waves'])} waves", {'blueprint_id':result['id'],'revision':result['revision']}
         filename = {'understand':'understand.md','assess':'assessment.md','plan':'blueprint.md'}[phase]
         workspace.save_artifact(pid, filename, text)
-        if phase == 'plan':
-            db.project_update(pid, plan_approved=None)
         return text[:250].replace('\n', ' '), {'artifact':filename, 'mode':provider}
     if phase == 'baseline':
-        data = _baseline(source)
+        data = _baseline(pid,source)
         workspace.save_artifact(pid, 'baseline.md', _baseline_md(data))
+        workspace.save_artifact(pid, 'baseline.json', json.dumps(data,ensure_ascii=False,indent=2))
         return f"Baseline registrado: {data['static_checks']['total']} verificaciones de sintaxis", data
     if phase == 'modernize':
+        if not planning.executable_wave(pid):raise ValueError('Se requiere wave aprobada y pack compatible')
+        if provider in {'codex','claude'} and not db.consent_is_active(pid,project.get('active_snapshot_id'),provider):
+            raise ValueError('El proyecto requiere consentimiento para enviar código a IA')
         candidate = workspace.copy_snapshot(pid)
         try:
             if provider == 'demo':
@@ -267,8 +296,8 @@ def perform(pid: str, phase: str) -> tuple[str, dict]:
             raise
     if phase == 'verify':
         candidate = workspace.project_candidate(pid)
-        original = _baseline(source)
-        current = _baseline(candidate)
+        original = _baseline(pid,source)
+        current = _baseline(pid,candidate)
         static_old, static_new = original['static_checks'], current['static_checks']
         baseline_run = db.last_run(pid, 'baseline')
         recorded = baseline_run['data'] if baseline_run else {}
@@ -297,11 +326,11 @@ def perform(pid: str, phase: str) -> tuple[str, dict]:
     raise ValueError('Fase inválida')
 
 
-def decide_plan(pid: str, approved: bool) -> None:
+def decide_plan(pid: str, approved: bool, uid: str = '') -> None:
     run = db.last_run(pid, 'plan')
     if not run or run['status'] != 'completed':
         raise ValueError('Primero genera el plan')
-    db.project_update(pid, plan_approved=1 if approved else 0)
+    planning.decide(pid, uid or db.project_get(pid)['owner_id'], approved)
 
 
 def decide_migration(pid: str, accepted: bool) -> None:

@@ -22,6 +22,22 @@ export interface Project { id: string; name: string; system_name: string; provid
   runs?: Run[]; artifacts?: string[]; stages?: string[]; phase_ready?: Record<string, boolean>;
 }
 
+export interface MigrationAttempt {
+  id:string;project_id:string;phase_run_id:string;snapshot_id:string;blueprint_id:string;
+  blueprint_revision:number;wave_id:string;pack_id:string;provider:string;
+  status:'queued'|'running'|'completed'|'failed'|'superseded';error?:string|null;
+  created_at:string;parent_attempt_id?:string|null;decision?:'approved'|'rejected'|null;
+  verify_status?:'queued'|'running'|'completed'|'failed'|null;
+  verification?:MigrationVerification|null;
+  result:Record<string,any>;candidate_sha256?:string|null;reviewed_sha256?:string|null;
+}
+export interface MigrationReviewFile {path:string;selected:boolean;comment:string;summary:string;risk:string;
+  added:number;removed:number;reviewed_at?:string|null;}
+export interface MigrationReviewSummary {attempt_id:string;files:MigrationReviewFile[];total_files:number;
+  selected_count:number;added:number;removed:number;explanation:string;selection_level:string;}
+export interface MigrationVerification {classification:'verified_within_tests'|'partial'|'not_demonstrated'|'divergent';
+  reason:string;limits:string;files_selected:number;reviewed_sha256:string;
+  static_before:{failed:number;total:number};static_after:{failed:number;total:number};}
 export interface MigrationWave {id:string; goal:string; strategy:string; files:string[]; depends_on:string[];
   priority:number;risk:string;acceptance_criteria:string;}
 export interface BlueprintData {schema_version:number;title:string;target_architecture:string;source_snapshot_id:string;
@@ -161,8 +177,26 @@ export class ApiService {
   plan(pid: string, approved: boolean): Observable<any> {
     return this.http.post(`${this.base}/projects/${pid}/plan/decision`, {approved});
   }
-  decision(pid: string, approved: boolean): Observable<any> {
-    return this.http.post(`${this.base}/projects/${pid}/migration/decision`, {approved});
+  migrationAttempts(pid:string):Observable<{attempts:MigrationAttempt[];worker:{configured:boolean;last_seen:string|null}}> {
+    return this.http.get<{attempts:MigrationAttempt[];worker:{configured:boolean;last_seen:string|null}}>(`${this.base}/projects/${pid}/migration/attempts`);
+  }
+  migrationReview(pid:string,aid:string):Observable<MigrationReviewSummary> {
+    return this.http.get<MigrationReviewSummary>(`${this.base}/projects/${pid}/migration/attempts/${aid}/review`);
+  }
+  migrationDiff(pid:string,aid:string,path:string):Observable<{path:string;diff:string}> {
+    return this.http.get<{path:string;diff:string}>(`${this.base}/projects/${pid}/migration/attempts/${aid}/diff`,{params:{path}});
+  }
+  migrationSetReview(pid:string,aid:string,path:string,selected:boolean,comment:string):Observable<MigrationReviewSummary> {
+    return this.http.patch<MigrationReviewSummary>(`${this.base}/projects/${pid}/migration/attempts/${aid}/review`,{path,selected,comment});
+  }
+  migrationRetry(pid:string,aid:string):Observable<MigrationAttempt> {
+    return this.http.post<MigrationAttempt>(`${this.base}/projects/${pid}/migration/attempts/${aid}/retry`,{});
+  }
+  migrationDelivery(pid:string,format:'zip'|'patch'|'report'):Observable<Blob> {
+    return this.http.get(`${this.base}/projects/${pid}/migration/delivery`,{params:{format},responseType:'blob'});
+  }
+  decision(pid: string, approved: boolean, reason:string=''): Observable<any> {
+    return this.http.post(`${this.base}/projects/${pid}/migration/decision`, {approved,reason});
   }
   artifact(pid: string, filename: string): Observable<string> {
     return this.http.get(`${this.base}/projects/${pid}/artifacts/${encodeURIComponent(filename)}`, { responseType: 'text' });

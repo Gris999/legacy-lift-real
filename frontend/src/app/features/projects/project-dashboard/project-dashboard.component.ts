@@ -13,11 +13,13 @@ import { BaselinePanelComponent } from '../../planning/baseline-panel/baseline-p
 import { MigrationPacksComponent } from '../../planning/migration-packs/migration-packs.component';
 import { BlueprintEditorComponent } from '../../planning/blueprint-editor/blueprint-editor.component';
 import { ArtifactsPanelComponent } from '../../artifacts/artifacts-panel/artifacts-panel.component';
+import { MigrationReviewComponent } from '../../migration/migration-review/migration-review.component';
+import { VerifyResultComponent } from '../../migration/verify-result/verify-result.component';
 
 @Component({
   selector: 'll-project-dashboard',
   standalone: true,
-  imports: [CommonModule, IconComponent, ButtonDirective, MetricCardComponent, NoticeComponent, SourcePanelComponent, PipelinePanelComponent, PhaseActionsComponent, ArtifactsPanelComponent, DiscoverOverviewComponent, AnalysisControlsComponent, ReviewQueueComponent, AssessmentOverviewComponent, BlueprintEditorComponent, MigrationPacksComponent, BaselinePanelComponent],
+  imports: [CommonModule, IconComponent, ButtonDirective, MetricCardComponent, NoticeComponent, SourcePanelComponent, PipelinePanelComponent, PhaseActionsComponent, ArtifactsPanelComponent, DiscoverOverviewComponent, AnalysisControlsComponent, ReviewQueueComponent, AssessmentOverviewComponent, BlueprintEditorComponent, MigrationPacksComponent, BaselinePanelComponent, MigrationReviewComponent, VerifyResultComponent],
   templateUrl: './project-dashboard.component.html',
   styleUrl: './project-dashboard.component.css'
 })
