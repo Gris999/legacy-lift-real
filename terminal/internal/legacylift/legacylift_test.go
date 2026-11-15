@@ -110,7 +110,7 @@ func TestRunnerStopsOnFailure(t *testing.T) {
 	if err := r.Run(context.Background(), func(Event) {}); err == nil {
 		t.Fatal("expected error")
 	}
-	if calls != 1 {
+	if calls != 2 { // one retry after a model error, then stop
 		t.Fatalf("calls = %d", calls)
 	}
 }
@@ -247,5 +247,24 @@ func TestRunnerLiteSendsCodeAndAppliesModernize(t *testing.T) {
 	mod, _ := os.ReadFile(filepath.Join(root, ".legacylift", "06-modernize.md"))
 	if !strings.Contains(string(mod), "Archivos aplicados") {
 		t.Fatalf("modernize artifact = %s", mod)
+	}
+}
+
+func TestModernizeWithoutRealChangesFails(t *testing.T) {
+	root := t.TempDir()
+	_ = os.WriteFile(filepath.Join(root, "app.py"), []byte("print(1)\n"), 0o644)
+	all, _ := Phases()
+	mod, _ := Select(all, "modernize", "modernize")
+	calls := 0
+	r := &Runner{Root: root, Phases: mod, Agent: func(_ context.Context, _ string, w io.Writer) error {
+		calls++ // claims success but never edits the candidate
+		fmt.Fprint(w, "# Modernize\n\n"+strings.Repeat("- cambié app.py\n", 20))
+		return nil
+	}}
+	if err := r.Run(context.Background(), func(Event) {}); err == nil || !strings.Contains(err.Error(), "no modificó") {
+		t.Fatalf("err = %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("calls = %d", calls)
 	}
 }

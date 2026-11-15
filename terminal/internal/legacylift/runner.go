@@ -44,6 +44,8 @@ type Runner struct {
 	// Lite runs phases without agent tools: Go gathers code, tests and
 	// diffs and the model only writes the report (for small local models).
 	Lite bool
+	// BeforePhase, when set, runs before each phase (e.g. to pick tools).
+	BeforePhase func(Phase)
 }
 
 // skipCopy are top-level entries never copied into the candidate.
@@ -117,6 +119,9 @@ func (r *Runner) Run(ctx context.Context, send func(Event)) error {
 			prev = previousArtifact(ph)
 		}
 		send(Event{Index: i, Status: Running})
+		if r.BeforePhase != nil {
+			r.BeforePhase(ph)
+		}
 		start := time.Now()
 
 		if ph.ID == "modernize" {
@@ -138,10 +143,29 @@ func (r *Runner) Run(ctx context.Context, send func(Event)) error {
 			}
 			if attempt > 1 {
 				prompt += "\n\nIMPORTANTE: el intento anterior no dejó un resultado válido. Responde ahora con el informe completo en Markdown, en español."
+				if ph.ID == "modernize" && !r.Lite {
+					prompt += " Antes del informe DEBES modificar de verdad los archivos dentro de `.legacylift/candidate/` con la herramienta edit o write."
+				}
 				send(Event{Index: i, Status: Running, Chunk: "\n— reintentando la fase —\n"})
 			}
 			w.buf.Reset()
 			err = r.Agent(ctx, prompt, w)
+			if err != nil && attempt == 1 && ctx.Err() == nil {
+				// e.g. a malformed tool call from a small model: try once more.
+				send(Event{Index: i, Status: Running, Chunk: "\n— error del modelo: " + err.Error() + " —\n"})
+				continue
+			}
+			if err == nil && !r.Lite && ph.ID == "modernize" && !candidateChanged(ctx, r.Root) {
+				// The model claimed changes without editing anything: never
+				// accept a Modernize report that is not backed by a real diff.
+				_ = os.Remove(art)
+				if attempt == 1 {
+					send(Event{Index: i, Status: Running, Chunk: "\n— no hubo cambios reales en .legacylift/candidate: reintentando —\n"})
+					continue
+				}
+				err = fmt.Errorf("Modernize no modificó ningún archivo en %s/candidate (el informe no está respaldado por cambios reales)", Dir)
+				break
+			}
 			if err != nil || validMarkdown(readFile(art)) || validMarkdown(w.buf.String()) {
 				break
 			}
@@ -220,4 +244,9 @@ func validMarkdown(s string) bool {
 		return false
 	}
 	return strings.Contains(s, "#") || strings.Contains(s, "\n- ") || strings.Contains(s, "\n* ") || strings.Contains(s, "|")
+}
+
+// candidateChanged reports whether .legacylift/candidate differs from the original.
+func candidateChanged(ctx context.Context, root string) bool {
+	return !strings.HasPrefix(Diff(ctx, root), "Sin diferencias")
 }

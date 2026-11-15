@@ -2,8 +2,8 @@ package agent
 
 import (
 	"context"
-	"os"
 	_ "embed"
+	"os"
 
 	"github.com/charmbracelet/crush/internal/agent/prompt"
 	"github.com/charmbracelet/crush/internal/config"
@@ -14,6 +14,9 @@ var coderPromptTmpl []byte
 
 //go:embed templates/legacylift_lite.md.tpl
 var liteCoderPromptTmpl []byte
+
+//go:embed templates/legacylift_agent.md.tpl
+var agentLitePromptTmpl []byte
 
 //go:embed templates/task.md.tpl
 var taskPromptTmpl []byte
@@ -28,8 +31,11 @@ func coderPrompt(opts ...prompt.Option) (*prompt.Prompt, error) {
 	tmpl := coderPromptTmpl
 	// LegacyLift lite mode: small local models get a short system prompt
 	// instead of the ~22 KB general coding prompt.
-	if os.Getenv("LEGACYLIFT_LITE") == "1" {
+	switch os.Getenv("LEGACYLIFT_MODE") {
+	case "lite":
 		tmpl = liteCoderPromptTmpl
+	case "agent":
+		tmpl = agentLitePromptTmpl
 	}
 	systemPrompt, err := prompt.NewPrompt("coder", string(tmpl), opts...)
 	if err != nil {

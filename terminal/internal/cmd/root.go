@@ -901,6 +901,10 @@ func startDetachedServer(cmd *cobra.Command, hostURL *url.URL) error {
 }
 
 func shouldEnableMetrics(cfg *config.Config) bool {
+	// LegacyLift: analysed code is private, so usage metrics are opt-in.
+	if v, _ := strconv.ParseBool(os.Getenv("LEGACYLIFT_ENABLE_METRICS")); !v {
+		return false
+	}
 	if v, _ := strconv.ParseBool(os.Getenv("CRUSH_DISABLE_METRICS")); v {
 		return false
 	}
