@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -134,10 +135,12 @@ func (r *Runner) Run(ctx context.Context, send func(Event)) error {
 					ph.Artifact() + "` con la herramienta de escritura, o responde con el contenido completo en Markdown."
 				send(Event{Index: i, Status: Running, Chunk: "\n— reintentando la fase —\n"})
 			}
+			w.buf.Reset()
 			err = r.Agent(ctx, prompt, w)
-			if err != nil || hasContent(art) || strings.TrimSpace(w.buf.String()) != "" {
+			if err != nil || validMarkdown(readFile(art)) || validMarkdown(w.buf.String()) {
 				break
 			}
+			_ = os.Remove(art) // discard an invalid artifact before retrying
 		}
 		took := time.Since(start)
 		if err != nil {
@@ -146,11 +149,11 @@ func (r *Runner) Run(ctx context.Context, send func(Event)) error {
 		}
 		// If the model answered but did not write the artifact itself,
 		// keep its answer as the artifact so nothing is lost.
-		if !hasContent(art) {
-			if out := strings.TrimSpace(w.buf.String()); out != "" {
+		if !validMarkdown(readFile(art)) {
+			if out := cleanOutput(w.buf.String()); validMarkdown(out) {
 				_ = os.WriteFile(art, []byte("# "+ph.Title+"\n\n"+out+"\n"), 0o644)
 			} else {
-				err := fmt.Errorf("la fase no produjo %s", ph.Artifact())
+				err := fmt.Errorf("la fase no produjo un resultado válido en %s (el modelo puede ser demasiado pequeño: prueba otro con --model)", ph.Artifact())
 				send(Event{Index: i, Status: Failed, Err: err, Took: took})
 				return err
 			}
@@ -176,4 +179,26 @@ func previousArtifact(ph Phase) string {
 func hasContent(path string) bool {
 	st, err := os.Stat(path)
 	return err == nil && st.Size() > 0
+}
+
+var thinkRe = regexp.MustCompile(`(?s)<think>.*?</think>`)
+
+// cleanOutput removes reasoning blocks some local models emit.
+func cleanOutput(s string) string {
+	return strings.TrimSpace(thinkRe.ReplaceAllString(s, ""))
+}
+
+func readFile(p string) string {
+	b, _ := os.ReadFile(p)
+	return string(b)
+}
+
+// validMarkdown is a cheap sanity check: real phase reports are prose with
+// at least one heading or list, not empty text or a raw JSON blob.
+func validMarkdown(s string) bool {
+	s = cleanOutput(s)
+	if len(s) < 200 || strings.HasPrefix(s, "{") || strings.HasPrefix(s, "[") {
+		return false
+	}
+	return strings.Contains(s, "#") || strings.Contains(s, "\n- ") || strings.Contains(s, "\n* ") || strings.Contains(s, "|")
 }

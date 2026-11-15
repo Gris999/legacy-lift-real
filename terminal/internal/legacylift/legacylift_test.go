@@ -47,7 +47,7 @@ func fakeAgent(root, silent string) Agent {
 		all, _ := Phases()
 		for _, p := range all {
 			if strings.Contains(prompt, p.Artifact()) && strings.Contains(prompt, "/ "+strings.ToUpper(p.ID)) {
-				fmt.Fprintf(w, "trabajando en %s\n", p.ID)
+				fmt.Fprintf(w, "## trabajando en %s\n\n%s", p.ID, strings.Repeat("- punto observado en archivo:1\n", 12))
 				if p.ID == "modernize" {
 					// Modernize must only see the candidate copy.
 					if _, err := os.Stat(filepath.Join(root, Dir, "candidate", "app.py")); err != nil {
@@ -56,7 +56,7 @@ func fakeAgent(root, silent string) Agent {
 					_ = os.WriteFile(filepath.Join(root, Dir, "candidate", "app.py"), []byte("print('nuevo')\n"), 0o644)
 				}
 				if p.ID != silent {
-					return os.WriteFile(filepath.Join(root, p.Artifact()), []byte("# ok\n"), 0o644)
+					return os.WriteFile(filepath.Join(root, p.Artifact()), []byte("# ok\n\n"+strings.Repeat("- hallazgo con evidencia\n", 12)), 0o644)
 				}
 				return nil
 			}
@@ -149,7 +149,7 @@ func TestRunnerRetriesEmptyPhase(t *testing.T) {
 			if !strings.Contains(prompt, "intento anterior") {
 				t.Error("retry prompt missing reminder")
 			}
-			fmt.Fprint(w, "inventario")
+			fmt.Fprint(w, "# Inventario\n\n"+strings.Repeat("- archivo.py: módulo principal\n", 12))
 		}
 		return nil
 	}}
@@ -158,5 +158,14 @@ func TestRunnerRetriesEmptyPhase(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Fatalf("calls = %d", calls)
+	}
+}
+
+func TestValidMarkdown(t *testing.T) {
+	if validMarkdown("<think>\n</think>\n{\"id\":\"c1\"}") {
+		t.Fatal("raw JSON must be rejected")
+	}
+	if !validMarkdown("<think>x</think>\n# Informe\n\n" + strings.Repeat("- regla con evidencia\n", 12)) {
+		t.Fatal("markdown report must be accepted")
 	}
 }
