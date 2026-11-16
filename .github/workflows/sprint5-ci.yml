@@ -19,3 +19,28 @@ jobs:
       - name: Productize and security regressions
         working-directory: backend
         run: python -m pytest -q tests/test_s5_productize.py tests/test_auth.py tests/test_security.py tests/test_s4_delivery.py
+  angular:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install Angular dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Architecture and Sprint checks
+        working-directory: frontend
+        run: |
+          npm run check:architecture
+          npm run check:ui
+          npm run check:session
+          npm run check:interactions
+          npm run check:sprint2
+          npm run check:sprint3
+          npm run check:sprint4
+      - name: Angular production build
+        working-directory: frontend
+        run: npm run build
