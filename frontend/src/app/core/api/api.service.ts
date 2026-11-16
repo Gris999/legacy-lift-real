@@ -3,6 +3,12 @@ import { HttpClient, HttpErrorResponse, HttpInterceptorFn } from '@angular/commo
 import { Observable, catchError, throwError } from 'rxjs';
 import { AuthSessionService } from '../auth/auth-session.service';
 
+export interface Organization {id:string;name:string;plan_id:string;role:'owner'|'admin'|'developer'|'viewer';is_personal:number;project_count:number;member_count:number;}
+export interface OrganizationMember {id:string;email:string;display_name:string;role:'owner'|'admin'|'developer'|'viewer';joined_at:string;}
+export interface OrganizationReport {totals:{projects:number;members:number;snapshots:number;runs:number;migration_attempts:number};projects:{id:string;name:string;provider:string;runs:number;attempts:number;}[];runs_by_phase:{phase:string;status:string;count:number}[];}
+export interface OrganizationUsage {plan:{id:string;name:string;max_projects:number;max_members:number;monthly_runs:number};period:string;used:{projects:number;members:number;monthly_runs:number};billing:{status:string;payments_enabled:boolean;message:string};}
+export interface AuditEntry {id:number;user_id:string;display_name:string|null;action:string;resource:string;created_at:string;}
+
 export interface AuthResponse { access_token: string; token_type: string; expires_at: string; user?: { display_name: string; email: string; id: string }; }
 export interface Provider { id: 'codex' | 'claude' | 'demo'; name: string; ready: boolean; help: string; }
 export interface Run { id: string; phase: string; status: 'running' | 'completed' | 'failed';
@@ -105,8 +111,20 @@ export class ApiService {
   me(): Observable<{username: string}> { return this.http.get<{username: string}>(`${this.base}/auth/me`); }
   providers(): Observable<Provider[]> { return this.http.get<Provider[]>(`${this.base}/providers`); }
   projects(): Observable<Project[]> { return this.http.get<Project[]>(`${this.base}/projects`); }
-  create(name: string, system_name: string, provider: string): Observable<Project> {
-    return this.http.post<Project>(`${this.base}/projects`, {name, system_name, provider});
+  organizations(): Observable<Organization[]> { return this.http.get<Organization[]>(`${this.base}/organizations`); }
+  createOrganization(name:string):Observable<Organization> {return this.http.post<Organization>(`${this.base}/organizations`,{name});}
+  organizationMembers(oid:string):Observable<OrganizationMember[]> {return this.http.get<OrganizationMember[]>(`${this.base}/organizations/${oid}/members`);}
+  inviteMember(oid:string,email:string,role:string):Observable<{token:string;expires_at:string}> {return this.http.post<{token:string;expires_at:string}>(`${this.base}/organizations/${oid}/invitations`,{email,role});}
+  acceptInvitation(token:string):Observable<Organization> {return this.http.post<Organization>(`${this.base}/organizations/invitations/accept`,{token});}
+  updateMemberRole(oid:string,uid:string,role:string):Observable<{ok:boolean}> {return this.http.patch<{ok:boolean}>(`${this.base}/organizations/${oid}/members/${uid}`,{role});}
+  removeMember(oid:string,uid:string):Observable<{ok:boolean}> {return this.http.delete<{ok:boolean}>(`${this.base}/organizations/${oid}/members/${uid}`);}
+  organizationReport(oid:string):Observable<OrganizationReport> {return this.http.get<OrganizationReport>(`${this.base}/organizations/${oid}/reports`);}
+  organizationReportCsv(oid:string):Observable<Blob> {return this.http.get(`${this.base}/organizations/${oid}/reports.csv`,{responseType:'blob'});}
+  organizationUsage(oid:string):Observable<OrganizationUsage> {return this.http.get<OrganizationUsage>(`${this.base}/organizations/${oid}/usage`);}
+  organizationAudit(oid:string):Observable<AuditEntry[]> {return this.http.get<AuditEntry[]>(`${this.base}/organizations/${oid}/audit`);}
+
+  create(name: string, system_name: string, provider: string, organization_id?: string): Observable<Project> {
+    return this.http.post<Project>(`${this.base}/projects`, {name, system_name, provider, organization_id:organization_id || null});
   }
   rename(pid: string, name: string, system_name: string): Observable<Project> {
     return this.http.patch<Project>(`${this.base}/projects/${pid}`, {name,system_name});

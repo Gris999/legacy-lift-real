@@ -2,6 +2,7 @@
       <div class="topbar-leading"><button type="button" class="icon-action mobile-menu" (click)="vm.mobileNavOpen=true" aria-label="Abrir menú" [attr.aria-expanded]="vm.mobileNavOpen"><ll-icon name="menu"/></button>
         <nav class="breadcrumbs" aria-label="Ruta de navegación"><span>Workspace</span><ll-icon name="chevron_right" size="sm"/><strong>{{vm.selected?.name || 'Resumen'}}</strong></nav></div>
       <div class="topbar-actions">
+        <ll-organization-console/>
         <button class="theme-action icon-action" type="button" (click)="vm.toggleTheme()"
           [attr.aria-label]="vm.theme === 'dark' ? 'Activar tema claro' : 'Activar tema oscuro'"
           [attr.title]="vm.theme === 'dark' ? 'Tema claro' : 'Tema oscuro'">

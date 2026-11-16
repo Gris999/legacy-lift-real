@@ -1,0 +1,68 @@
+<button type="button" class="org-trigger" (click)="show()" aria-label="Abrir organizaciones y reportes">
+  <ll-icon name="corporate_fare" size="sm"/> <span>Organizaciones</span>
+</button>
+<ll-dialog [open]="open()" dialogId="organizationsTitle" title="Organizaciones y reportes" eyebrow="SPRINT 5 · PRODUCTIZE" (closed)="close()">
+  <div class="org-panel">
+    <p class="muted">Cada proyecto pertenece a una organización. Tus proyectos anteriores siguen en el espacio personal.</p>
+    <p *ngIf="error()" class="org-error" role="alert">{{error()}}</p>
+    <p *ngIf="info()" class="org-info" role="status">{{info()}}</p>
+    <label for="organizationSelect">Organización</label>
+    <select class="input" id="organizationSelect" [ngModel]="selectedId()" (ngModelChange)="select($event)">
+      <option *ngFor="let org of orgs()" [value]="org.id">{{org.name}} · {{org.role}}</option>
+    </select>
+    <div class="org-grid" *ngIf="usage() as u">
+      <div class="org-stat"><strong>{{u.used.projects}} / {{u.plan.max_projects}}</strong><span>Proyectos</span></div>
+      <div class="org-stat"><strong>{{u.used.members}} / {{u.plan.max_members}}</strong><span>Miembros</span></div>
+      <div class="org-stat"><strong>{{u.used.monthly_runs}} / {{u.plan.monthly_runs}}</strong><span>Runs de {{u.period}}</span></div>
+    </div>
+    <p *ngIf="usage() as u" class="muted">Plan: <b>{{u.plan.name}}</b>. No está conectada la facturación externa ni se procesan pagos.</p>
+    <section *ngIf="report() as r" class="org-section">
+      <div class="org-section-title"><h3>Actividad y reportes</h3><button type="button" class="small-action" (click)="downloadReport()">Exportar CSV</button></div>
+      <p>{{r.totals.snapshots}} snapshots · {{r.totals.runs}} análisis · {{r.totals.migration_attempts}} modernizaciones</p>
+      <ul class="org-projects"><li *ngFor="let project of r.projects">{{project.name}} <small>· {{project.runs}} ejecuciones</small></li></ul>
+    </section>
+    <section class="org-section" *ngIf="canManage">
+      <h3>Equipo</h3>
+      <div *ngFor="let member of members()" class="org-member">
+        <span><strong>{{member.display_name}}</strong><small>{{member.email}}</small></span>
+        <span *ngIf="member.role==='owner'" class="muted">Propietario</span>
+        <ng-container *ngIf="member.role!=='owner'">
+          <select class="input role-select" [ngModel]="member.role" (ngModelChange)="changeRole(member,$event)"
+            [disabled]="selectedOrg?.role!=='owner' && member.role==='admin'">
+            <option value="viewer">Viewer</option><option value="developer">Developer</option>
+            <option value="admin" [disabled]="selectedOrg?.role!=='owner'">Admin</option>
+          </select>
+          <button type="button" class="small-action" (click)="remove(member)">Quitar</button>
+        </ng-container>
+      </div>
+      <div class="org-actions">
+        <input class="input" [(ngModel)]="inviteEmail" type="email" placeholder="correo@equipo.com" aria-label="Correo para invitar"/>
+        <select class="input role-select" [(ngModel)]="inviteRole" aria-label="Rol de la invitación">
+          <option value="viewer">Viewer</option><option value="developer">Developer</option><option value="admin">Admin</option>
+        </select>
+        <button type="button" class="small-action" (click)="invite()" [disabled]="busy()">Invitar</button>
+      </div>
+      <div *ngIf="invitationCode()" class="invite-code">
+        <p>Código de invitación (visible una sola vez):</p><code>{{invitationCode()}}</code>
+      </div>
+    </section>
+    <section class="org-section" *ngIf="canManage">
+      <h3>Auditoría reciente</h3>
+      <p class="muted" *ngIf="!audit().length">Todavía no hay operaciones registradas.</p>
+      <div class="audit-line" *ngFor="let event of audit() | slice:0:12">
+        <span>{{event.action}}</span><small>{{event.display_name || 'Sistema'}} · {{event.created_at | date:'short'}}</small>
+      </div>
+    </section>
+    <section class="org-section">
+      <h3>Crear organización</h3>
+      <div class="org-actions"><input class="input" [(ngModel)]="newName" maxlength="80" placeholder="Nombre del equipo" aria-label="Nombre de la nueva organización"/>
+        <button type="button" class="small-action" (click)="create()" [disabled]="busy() || newName.trim().length<3">Crear</button></div>
+    </section>
+    <section class="org-section">
+      <h3>Unirme con una invitación</h3>
+      <div class="org-actions"><input class="input" [(ngModel)]="acceptCode" placeholder="Pegar código" aria-label="Código de invitación"/>
+        <button type="button" class="small-action" (click)="accept()" [disabled]="busy() || !acceptCode.trim()">Unirme</button></div>
+      <p class="muted">Debes iniciar sesión con el mismo correo de la invitación.</p>
+    </section>
+  </div>
+</ll-dialog>

@@ -3,6 +3,10 @@
   <form (ngSubmit)="vm.create()" class="dialog-form">
     <div class="form-field"><label for="projectName">Nombre del proyecto</label><input id="projectName" name="name" class="input" [(ngModel)]="vm.createName" required minlength="3" maxlength="80" placeholder="Ej. Facturación legacy"/></div>
     <div class="form-field"><label for="systemName">Sistema legacy</label><input id="systemName" name="system" class="input" [(ngModel)]="vm.createSystem" required minlength="2" maxlength="80" placeholder="Ej. API Python 3.8"/></div>
+    <div class="form-field" *ngIf="vm.organizations.length"><label for="orgSelect">Organización de destino</label>
+      <select class="input" id="orgSelect" name="organization" [(ngModel)]="vm.createOrganizationId">
+        <option *ngFor="let org of vm.organizations" [value]="org.id" [disabled]="org.role==='viewer'">{{org.name}} · {{org.role}}</option>
+      </select><small>Los proyectos quedan aislados por organización. Solo Developer, Admin y Owner pueden crear.</small></div>
     <div class="form-field"><label for="providerSelect">Motor de inteligencia artificial</label><select class="input" id="providerSelect" name="provider" [(ngModel)]="vm.createProvider">
       <option *ngFor="let engine of vm.providers" [ngValue]="engine.id" [disabled]="!engine.ready">{{engine.name}}{{engine.ready?'':' — requiere configuración'}}</option></select>
       <small>Las credenciales se mantienen en el backend, no en el navegador.</small></div>
