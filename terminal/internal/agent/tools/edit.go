@@ -70,6 +70,9 @@ func NewEditTool(
 			}
 
 			params.FilePath = filepathext.SmartJoin(workingDir, params.FilePath)
+			if msg := legacyliftWriteGuard(workingDir, params.FilePath); msg != "" {
+				return fantasy.NewTextErrorResponse(msg), nil
+			}
 
 			var response fantasy.ToolResponse
 			var err error

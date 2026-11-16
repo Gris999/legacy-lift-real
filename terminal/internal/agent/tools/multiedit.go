@@ -75,6 +75,9 @@ func NewMultiEditTool(
 			}
 
 			params.FilePath = filepathext.SmartJoin(workingDir, params.FilePath)
+			if msg := legacyliftWriteGuard(workingDir, params.FilePath); msg != "" {
+				return fantasy.NewTextErrorResponse(msg), nil
+			}
 
 			// Validate all edits before applying any
 			if err := validateEdits(params.Edits); err != nil {

@@ -64,6 +64,9 @@ func NewWriteTool(
 			}
 
 			filePath := filepathext.SmartJoin(workingDir, params.FilePath)
+			if msg := legacyliftWriteGuard(workingDir, filePath); msg != "" {
+				return fantasy.NewTextErrorResponse(msg), nil
+			}
 
 			fileInfo, err := os.Stat(filePath)
 			if err == nil {

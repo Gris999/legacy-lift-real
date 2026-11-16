@@ -122,6 +122,12 @@ func (r *Runner) Run(ctx context.Context, send func(Event)) error {
 		if r.BeforePhase != nil {
 			r.BeforePhase(ph)
 		}
+		// The original code is never writable; Modernize may only touch the copy.
+		guard := "artifacts"
+		if ph.ID == "modernize" {
+			guard = "candidate"
+		}
+		_ = os.Setenv("LEGACYLIFT_WRITE_GUARD", guard)
 		start := time.Now()
 
 		if ph.ID == "modernize" {
