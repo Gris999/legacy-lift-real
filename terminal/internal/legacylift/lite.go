@@ -124,6 +124,9 @@ func mustPhases() []Phase {
 func TestCommand(dir string) []string {
 	exists := func(n string) bool { _, err := os.Stat(filepath.Join(dir, n)); return err == nil }
 	switch {
+	case exists("run_tests.sh"):
+		// Explicit hook for stacks without a standard runner (e.g. plain Java).
+		return []string{"sh", "run_tests.sh"}
 	case exists("go.mod"):
 		return []string{"go", "test", "./..."}
 	case exists("package.json"):
