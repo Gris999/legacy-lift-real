@@ -12,25 +12,46 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
-from . import ai, auth as security, db, github, ingestion, jobs, pipeline, workspace, planning, migration_packs, baseline, migration_runs, migration_review, migration_verify, migration_delivery
+from . import ai, auth as security, db, github, ingestion, jobs, pipeline, workspace, planning, migration_packs, baseline, migration_runs, migration_review, migration_verify, migration_delivery, tenancy, reporting
 from .settings import cors_origins
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     db.init()
+    tenancy.init()
     ingestion.restore_legacy_snapshots()
     yield
 
 
 app = FastAPI(title='LegacyLift API', version='0.1.0', docs_url=None, redoc_url=None, lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=cors_origins(), allow_credentials=False,
-                   allow_methods=['GET', 'POST', 'PATCH', 'PUT'], allow_headers=['Authorization', 'Content-Type'])
+                   allow_methods=['GET', 'POST', 'PATCH', 'PUT', 'DELETE'], allow_headers=['Authorization', 'Content-Type'])
+
+@app.middleware('http')
+async def audit_successful_writes(request: Request, call_next):
+    response = await call_next(request)
+    if request.method in ('POST','PUT','PATCH','DELETE') and 200 <= response.status_code < 300:
+        actor=getattr(request.state,'user_id',None)
+        route=request.scope.get('route')
+        path=getattr(route,'path','')
+        if actor and path:
+            try:
+                tenancy.record_action(actor,request.method,path,
+                    pid=request.path_params.get('pid',''),oid=request.path_params.get('oid',''))
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception('No se pudo registrar auditoría')
+    return response
 
 
-def current_user(authorization: str = Header(default='')) -> dict:
+def current_user(request: Request, authorization: str = Header(default='')) -> dict:
     if not authorization.startswith('Bearer '):
         raise HTTPException(401, 'Se requiere una sesión')
-    return security.resolve(authorization[7:].strip())
+    user = security.resolve(authorization[7:].strip())
+    request.state.user_id = user['id']
+    user['_method'] = request.method
+    user['_path'] = request.url.path
+    return user
 
 
 
@@ -46,6 +67,7 @@ class Register(Login):
 
 
 class NewProject(BaseModel):
+    organization_id: str | None = None
     name: str = Field(min_length=3, max_length=80)
     system_name: str = Field(min_length=2, max_length=80)
     provider: str = Field(pattern='^(codex|claude|demo)$')
@@ -120,19 +142,20 @@ def providers(_user: dict = Depends(current_user)) -> list[dict]:
 
 @app.get('/api/projects')
 def projects(user: dict = Depends(current_user)) -> list[dict]:
-    return db.project_list(user['id'])
+    return tenancy.project_list(user['id'])
 
 
 @app.post('/api/projects')
 def create_project(data: NewProject, user: dict = Depends(current_user)) -> dict:
-    return db.project_create(data.name, data.system_name, data.provider, user['id'])
+    oid = data.organization_id or tenancy.personal(user['id'])
+    return tenancy.create_project(user['id'], oid, data.name, data.system_name, data.provider)
 
 
 def ensure_project(pid: str, user: dict) -> dict:
-    p = db.project_get(pid, user['id'])
-    if not p:
-        raise HTTPException(404, 'Proyecto no encontrado')
-    return p
+    required = 'viewer' if user.get('_method', 'GET') in ('GET', 'HEAD') else 'developer'
+    if any(t in user.get('_path','') for t in ('/decision','/consent')) and required != 'viewer':
+        required = 'admin'
+    return tenancy.project_access(pid, user['id'], required)
 
 
 @app.patch('/api/projects/{pid}')
@@ -368,6 +391,7 @@ async def stream_events(pid: str, after: int = 0, user: dict = Depends(current_u
 @app.post('/api/projects/{pid}/phases/{phase}')
 def start_phase(pid: str, phase: str, user: dict = Depends(current_user)) -> dict:
     ensure_project(pid, user)
+    tenancy.check_run_quota(pid,user['id'])
     if any(j['status'] in ('queued', 'running') for j in db.jobs_list(pid)):
         raise HTTPException(409, 'La importación y el escaneo deben terminar antes de iniciar otras fases')
     try:
@@ -547,3 +571,70 @@ def export(pid: str, user: dict = Depends(current_user)) -> Response:
         payload = workspace.export_zip(pid,False)
     return Response(payload, media_type='application/zip',
                     headers={'Content-Disposition': 'attachment; filename="legacylift-evidencias.zip"'})
+
+
+class OrganizationCreate(BaseModel):
+    name: str = Field(min_length=3,max_length=80)
+
+class InvitationCreate(BaseModel):
+    email: str
+    role: str = Field(pattern='^(admin|developer|viewer)$')
+
+class InvitationAccept(BaseModel):
+    token: str = Field(min_length=20,max_length=128)
+
+class MemberRoleUpdate(BaseModel):
+    role: str = Field(pattern='^(admin|developer|viewer)$')
+
+@app.get('/api/organizations')
+def organization_list(user:dict=Depends(current_user)) -> list[dict]:
+    return tenancy.list_organizations(user['id'])
+
+@app.post('/api/organizations')
+def organization_create(body:OrganizationCreate,user:dict=Depends(current_user)) -> dict:
+    return tenancy.create_organization(user['id'],body.name)
+
+@app.get('/api/organizations/plans')
+def organization_plans(user:dict=Depends(current_user)) -> list[dict]:
+    return list(tenancy.PLANS.values())
+
+@app.get('/api/organizations/{oid}')
+def organization_detail(oid:str,user:dict=Depends(current_user)) -> dict:
+    return tenancy.organization(oid,user['id'])
+
+@app.get('/api/organizations/{oid}/members')
+def organization_members(oid:str,user:dict=Depends(current_user)) -> list[dict]:
+    return tenancy.members(oid,user['id'])
+
+@app.post('/api/organizations/{oid}/invitations')
+def organization_invite(oid:str,body:InvitationCreate,user:dict=Depends(current_user)) -> dict:
+    return tenancy.invite(oid,user['id'],body.email,body.role)
+
+@app.post('/api/organizations/invitations/accept')
+def organization_accept_invitation(body:InvitationAccept,user:dict=Depends(current_user)) -> dict:
+    return tenancy.accept_invitation(user['id'],body.token)
+
+@app.patch('/api/organizations/{oid}/members/{uid}')
+def organization_member_role(oid:str,uid:str,body:MemberRoleUpdate,user:dict=Depends(current_user)) -> dict:
+    return tenancy.update_member(oid,user['id'],uid,body.role)
+
+@app.delete('/api/organizations/{oid}/members/{uid}')
+def organization_member_remove(oid:str,uid:str,user:dict=Depends(current_user)) -> dict:
+    return tenancy.update_member(oid,user['id'],uid,None)
+
+@app.get('/api/organizations/{oid}/reports')
+def organization_report(oid:str,user:dict=Depends(current_user)) -> dict:
+    return reporting.summary(oid,user['id'])
+
+@app.get('/api/organizations/{oid}/reports.csv')
+def organization_report_csv(oid:str,user:dict=Depends(current_user)) -> Response:
+    return Response(reporting.export_csv(oid,user['id']),media_type='text/csv; charset=utf-8',
+        headers={'Content-Disposition':'attachment; filename="legacylift-proyectos.csv"'})
+
+@app.get('/api/organizations/{oid}/usage')
+def organization_usage(oid:str,user:dict=Depends(current_user)) -> dict:
+    return reporting.usage(oid,user['id'])
+
+@app.get('/api/organizations/{oid}/audit')
+def organization_audit(oid:str,limit:int=100,user:dict=Depends(current_user)) -> list[dict]:
+    return tenancy.audit_log(oid,user['id'],limit)
