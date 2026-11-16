@@ -90,3 +90,21 @@ def test_project_quota_and_owner_protection(env):
         assert r.status_code==200,r.text
     assert client.post('/api/projects',headers=owner,json={
         'name':'Exceso', 'system_name':'Python','provider':'demo','organization_id':org}).status_code==409
+
+
+def test_invited_user_can_register_when_public_registration_closed(env,monkeypatch):
+    client,account=env
+    owner=account('owner@test.local')
+    oid=client.post('/api/organizations',headers=owner,json={'name':'Invitaciones'}).json()['id']
+    invite=client.post(f'/api/organizations/{oid}/invitations',headers=owner,
+        json={'email':'new@test.local','role':'viewer'}).json()['token']
+    monkeypatch.setenv('LEGACYLIFT_ALLOW_REGISTRATION','false')
+    body={'email':'new@test.local','display_name':'New User',
+          'password':'secure-pass-123456789','invitation_token':invite}
+    wrong=client.post('/api/auth/register',json={**body,'email':'wrong@test.local'})
+    assert wrong.status_code==400
+    correct=client.post('/api/auth/register',json=body)
+    assert correct.status_code==200,correct.text
+    hdr={'Authorization':'Bearer '+correct.json()['access_token']}
+    assert any(r['id']==oid and r['role']=='viewer' for r in client.get('/api/organizations',headers=hdr).json())
+    assert client.post('/api/auth/register',json={**body,'email':'third@test.local'}).status_code==400

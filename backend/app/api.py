@@ -61,6 +61,7 @@ class Login(BaseModel):
 
 
 class Register(Login):
+    invitation_token: str = Field(default="", max_length=128)
     bootstrap_secret: str = ""
     display_name: str = Field(min_length=2, max_length=100)
 
@@ -113,7 +114,7 @@ def auth_config() -> dict:
 @app.post('/api/auth/register')
 def register(data: Register) -> dict:
     try:
-        user = security.register(data.email, data.display_name, data.password, data.bootstrap_secret)
+        user = security.register(data.email, data.display_name, data.password, data.bootstrap_secret, data.invitation_token)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     return {'user': user, **security.login(data.email, data.password)}

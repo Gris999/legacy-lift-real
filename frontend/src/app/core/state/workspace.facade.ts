@@ -39,6 +39,9 @@ export class WorkspaceFacade {
   private readonly _authenticated = signal<boolean>(false);
   get authenticated(): boolean { return this._authenticated(); }
   set authenticated(value: boolean) { this._authenticated.set(value); }
+  private readonly _invitationToken = signal<string>('');
+  get invitationToken():string {return this._invitationToken();}
+  set invitationToken(value:string){this._invitationToken.set(value);}
   private readonly _password = signal<string>('');
   get password(): string { return this._password(); }
   set password(value: string) { this._password.set(value); }
@@ -337,11 +340,11 @@ export class WorkspaceFacade {
     if (this.busy || !this.password || !this.email) return;
     this.busy = true; this.error = '';
     const result = this.registerMode
-      ? this.api.register(this.email, this.password, this.displayName, this.bootstrapSecret)
+      ? this.api.register(this.email, this.password, this.displayName, this.bootstrapSecret, this.invitationToken)
       : this.api.login(this.email, this.password);
     result.subscribe({
       next: response => {
-        this.password='';this.bootstrapSecret='';this.busy=false;
+        this.password='';this.bootstrapSecret='';this.invitationToken='';this.busy=false;
         try {
           const user = response.user ? {username: response.user.display_name, email: response.user.email, id: response.user.id} : null;
           this.session.save(response.access_token, response.expires_at, user);

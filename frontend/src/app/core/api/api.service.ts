@@ -103,8 +103,8 @@ export class ApiService {
   login(email: string, password: string): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${this.base}/auth/login`, {email, password});
   }
-  register(email: string, password: string, display_name: string, bootstrap_secret: string): Observable<AuthResponse> {
-    return this.http.post<AuthResponse>(`${this.base}/auth/register`, {email, password, display_name, bootstrap_secret});
+  register(email: string, password: string, display_name: string, bootstrap_secret: string, invitation_token: string = ''): Observable<AuthResponse> {
+    return this.http.post<AuthResponse>(`${this.base}/auth/register`, {email, password, display_name, bootstrap_secret, invitation_token});
   }
   authConfig(): Observable<{registration_open: boolean;bootstrap_required:boolean}> { return this.http.get<{registration_open: boolean;bootstrap_required:boolean}>(`${this.base}/auth/config`); }
   logout(): Observable<{ok: boolean}> { return this.http.post<{ok: boolean}>(`${this.base}/auth/logout`, {}); }

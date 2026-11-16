@@ -34,6 +34,9 @@
         <ng-container *ngIf="vm.registerMode">
           <div class="form-field"><label for="displayName">Nombre visible</label>
             <input id="displayName" name="displayName" autocomplete="name" class="input" [(ngModel)]="vm.displayName" minlength="2" maxlength="100" required placeholder="Cómo quieres que te llamemos"></div>
+          <div class="form-field" *ngIf="!vm.bootstrapRequired"><label for="invitationToken">Código de invitación</label>
+            <input id="invitationToken" name="invitationToken" class="input" [(ngModel)]="vm.invitationToken" autocomplete="off" [required]="!vm.registrationOpen" placeholder="Solo necesario si el registro está cerrado">
+            <small>Una invitación válida permite crear tu cuenta aunque el registro público esté cerrado.</small></div>
           <div class="form-field" *ngIf="vm.bootstrapRequired"><label for="bootstrapSecret">Código de instalación</label>
             <input id="bootstrapSecret" name="bootstrapSecret" type="password" autocomplete="off" class="input" [(ngModel)]="vm.bootstrapSecret" placeholder="Código definido por el administrador" required>
             <small>Solo se solicita para registrar la primera cuenta.</small></div>
@@ -44,7 +47,7 @@
           <div class="password-field"><input id="password" [type]="vm.passwordVisible?'text':'password'" name="password" [attr.autocomplete]="vm.registerMode?'new-password':'current-password'" class="input" [placeholder]="vm.registerMode?'Mínimo 12 caracteres':'Introduce tu contraseña'" [(ngModel)]="vm.password" [attr.minlength]="vm.registerMode ? 12 : null" required>
             <button type="button" class="password-toggle" [attr.aria-label]="vm.passwordVisible?'Ocultar contraseña':'Mostrar contraseña'" [attr.aria-pressed]="vm.passwordVisible" (click)="vm.passwordVisible=!vm.passwordVisible"><ll-icon [name]="vm.passwordVisible?'visibility_off':'visibility'"/></button></div>
         </div>
-        <button llButton variant="primary" [block]="true" type="submit" [disabled]="vm.busy || !vm.password || !vm.email || (vm.registerMode && (vm.displayName.trim().length<2 || (vm.bootstrapRequired && !vm.bootstrapSecret)))">
+        <button llButton variant="primary" [block]="true" type="submit" [disabled]="vm.busy || !vm.password || !vm.email || (vm.registerMode && (vm.displayName.trim().length<2 || (vm.bootstrapRequired && !vm.bootstrapSecret) || (!vm.bootstrapRequired && !vm.registrationOpen && !vm.invitationToken.trim())))">
           <ll-icon [name]="vm.busy?'progress_activity':vm.registerMode?'person_add':'login'"/>
           {{vm.busy?'Procesando...':vm.registerMode?'Crear cuenta':'Iniciar sesión'}}
           <ll-icon name="arrow_forward" size="sm"/>
@@ -54,7 +57,9 @@
         {{vm.registerMode?'¿Ya tienes una cuenta?':'¿Primera vez en LegacyLift?'}}
         <button type="button" class="text-action" (click)="vm.registerMode=!vm.registerMode;vm.passwordVisible=false;vm.dismiss()">{{vm.registerMode?'Inicia sesión':'Crear una cuenta'}}</button>
       </div>
-      <div class="auth-switch auth-switch-muted" *ngIf="!vm.registrationOpen"><ll-icon name="info" size="sm"/> El registro está cerrado. Si aún no tienes cuenta, consulta al administrador.</div>
+      <div class="auth-switch auth-switch-muted" *ngIf="!vm.registrationOpen"><ll-icon name="info" size="sm"/>
+        {{vm.registerMode?'¿Ya tienes una cuenta?':'El registro público está cerrado.'}}
+        <button type="button" class="text-action" (click)="vm.registerMode=!vm.registerMode;vm.dismiss()">{{vm.registerMode?'Iniciar sesión':'Tengo una invitación'}}</button></div>
     </div>
     <footer class="auth-footer">LEGACYLIFT AI · CONTROLLED MODERNIZATION</footer>
   </section>

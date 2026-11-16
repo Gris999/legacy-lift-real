@@ -39,7 +39,7 @@ def password_matches(password: str, encoded: str) -> bool:
         return False
 
 
-def register(email: str, display_name: str, password: str, bootstrap_secret: str = '') -> dict:
+def register(email: str, display_name: str, password: str, bootstrap_secret: str = '', invitation_token: str = '') -> dict:
     email = canonical_email(email)
     if len(password) < 12 or len(password) > 256:
         raise ValueError('La contraseña debe tener entre 12 y 256 caracteres')
@@ -56,13 +56,32 @@ def register(email: str, display_name: str, password: str, bootstrap_secret: str
                 raise ValueError('Configura LEGACYLIFT_BOOTSTRAP_SECRET (24+ caracteres) en .env antes del primer registro')
             if not hmac.compare_digest(bootstrap_secret, expected):
                 raise ValueError('Código de instalación incorrecto')
-        if count and os.getenv('LEGACYLIFT_ALLOW_REGISTRATION', 'false').lower() != 'true':
-            raise ValueError('El registro está cerrado por el administrador')
+        invitation = None
+        if invitation_token:
+            invitation = c.execute('''SELECT * FROM organization_invitations
+                WHERE token_hash=? AND email=? AND accepted_at IS NULL AND expires_at>?''',
+                (hashlib.sha256(invitation_token.encode()).hexdigest(),email,db.now())).fetchone()
+            if not invitation:
+                raise ValueError('La invitación es inválida o ha expirado')
+        if count and os.getenv('LEGACYLIFT_ALLOW_REGISTRATION', 'false').lower() != 'true' and not invitation:
+            raise ValueError('El registro está cerrado: necesitas una invitación válida')
         try:
             c.execute('INSERT INTO users(id,email,display_name,password_hash,role,created_at) VALUES (?,?,?,?,?,?)',
                       (uid, email, display_name.strip(), hashed, 'owner' if not count else 'member', db.now()))
         except sqlite3.IntegrityError as exc:
             raise ValueError('El correo electrónico ya está registrado') from exc
+        if invitation:
+            from . import tenancy
+            oid = invitation['organization_id']
+            plan = c.execute('SELECT plan_id FROM organizations WHERE id=?',(oid,)).fetchone()['plan_id']
+            count_members = c.execute('SELECT COUNT(*) AS n FROM organization_members WHERE organization_id=?',(oid,)).fetchone()['n']
+            if count_members >= tenancy.PLANS[plan]['max_members']:
+                raise ValueError('La organización alcanzó su límite de integrantes')
+            c.execute('INSERT INTO organization_members(organization_id,user_id,role,joined_at) VALUES(?,?,?,?)',
+                      (oid,uid,invitation['role'],db.now()))
+            c.execute('UPDATE organization_invitations SET accepted_at=? WHERE id=?',(db.now(),invitation['id']))
+            c.execute('INSERT INTO organization_audit(organization_id,user_id,action,resource,created_at) VALUES(?,?,?,?,?)',
+                      (oid,uid,'member.joined','member',db.now()))
         # A single-operator legacy installation has no owner_id. First account claims that data.
         if not count:
             c.execute('UPDATE projects SET owner_id=? WHERE owner_id IS NULL', (uid,))
