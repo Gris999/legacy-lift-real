@@ -1719,7 +1719,8 @@ func (a *sessionAgent) createUserMessage(ctx context.Context, call SessionAgentC
 
 func (a *sessionAgent) preparePrompt(msgs []message.Message, supportsImages, supportsAudio bool, attachments ...message.Attachment) ([]fantasy.Message, []fantasy.FilePart) {
 	var history []fantasy.Message
-	if !a.isSubAgent {
+	// LegacyLift modes do not expose the todos tool: skip its reminder.
+	if !a.isSubAgent && os.Getenv("LEGACYLIFT_MODE") == "" {
 		history = append(history, fantasy.NewUserMessage(
 			fmt.Sprintf(
 				"<system_reminder>%s</system_reminder>",

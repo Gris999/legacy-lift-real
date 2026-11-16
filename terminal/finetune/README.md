@@ -24,3 +24,20 @@ python3 finetune/evaluar.py --datos datos --split valid --trabajo <carpeta-con-c
 
 Mide: reglas encontradas, defectos encontrados, citas `archivo:línea` válidas, español,
 original intacto, Modernize con cambios reales y pruebas que pasan, y honestidad de Verify.
+
+## Fase C — Ejemplos de entrenamiento (gratis, sin IA externa)
+
+1. **Profesor con guion** (`profesor_guion.py`): servidor compatible con OpenAI que, con la verdad
+   conocida, decide qué herramienta usar y qué escribir. La terminal real ejecuta las herramientas.
+   ```bash
+   python3 finetune/profesor_guion.py --datos finetune/datos --puerto 8090 &
+   finetune/grabar.sh finetune/datos train /tmp/trabajo http://localhost:8090 profesor finetune/datos/grabaciones/profesor-train.jsonl
+   python3 finetune/a_dataset.py --entrada finetune/datos/grabaciones/profesor-train.jsonl --salida finetune/datos/dataset/train.jsonl
+   ```
+   Resultado: 60 proyectos con nota 100 % en reglas, defectos, citas y pruebas; 2 617 ejemplos de
+   entrenamiento + 416 de validación (máx. 7 126 tokens).
+2. **Generación nocturna con el 9B** (`noche.sh`, muestreo por rechazo): el 9B hace las 7 fases y
+   solo se guardan los proyectos que aprueban `evaluar.py`. Aporta variedad de redacción.
+   ```bash
+   finetune/noche.sh finetune/datos finetune/datos/noche
+   ```
