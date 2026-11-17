@@ -41,3 +41,17 @@ original intacto, Modernize con cambios reales y pruebas que pasan, y honestidad
    ```bash
    finetune/noche.sh finetune/datos finetune/datos/noche
    ```
+
+## Resultados (10 proyectos de prueba)
+
+| Métrica | 4B base | v1 | v2 |
+|---|---|---|---|
+| Fases completas | 6,8 | 6,6 | 6,4 |
+| Reglas | 0,95 | 0,94 | 0,85 |
+| Defectos | 0,84 | 0,84 | 0,94 |
+| Citas | 0,97 | 0,97 | 0,87 |
+| Original intacto | 1,0 | 0,8 | 1,0 |
+| Modernize cambió | 0,8 | 0,6 | 0,7 |
+| Pruebas pasan | 0,7 | 1,0 | 0,7 |
+
+Conclusión: ni v1 ni v2 superan al modelo base. La mejora real vino del bloqueo de escritura y del diseño por fases. Una corrida repetida del 4B base dio 0,79 en reglas, así que las diferencias de ±0,1 con 10 proyectos están dentro del ruido.

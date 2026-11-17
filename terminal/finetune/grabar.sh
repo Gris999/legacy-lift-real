@@ -25,6 +25,6 @@ for src in "$DATOS/proyectos/$SPLIT"/*${FILTRO}*; do
  "options":{"progress":false,"request_timeout":900}}
 EOF
   inicio=$(date +%s)
-  if (cd "$dst" && "$BIN" --plain --mode agent > "$dst.log" 2>&1); then estado=ok; else estado=error; fi
+  if (cd "$dst" && "$BIN" --plain --mode "${LEGACYLIFT_RUN_MODE:-agent}" > "$dst.log" 2>&1); then estado=ok; else estado=error; fi
   echo "$id $estado $(( $(date +%s) - inicio ))s"
 done

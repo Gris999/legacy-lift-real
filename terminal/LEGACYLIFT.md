@@ -50,6 +50,27 @@ Prueba real con `qwen3.5:9b` (Apple M5, 16 GB) sobre `demo-source`: las 7 fases 
 Understand encontró las 3 reglas de negocio, Modernize refactorizó `calculator.py` y Verify confirmó
 que las 3 pruebas pasan sobre la candidata.
 
+## Qué modelo local usar (probado)
+
+Probado sobre 10 proyectos sintéticos de prueba (Python, JS, Java, Go) con evaluación automática (`finetune/evaluar.py`):
+
+| | Rápido: `qwen3:4b`, `--mode agent` | Calidad: `qwen3.5:9b`, `--mode lite` |
+|---|---|---|
+| RAM | 8 GB | 16 GB |
+| Tiempo por proyecto | 5–11 min | 30–60 min |
+| Fases completas (de 7) | 6,4 | 7,0 |
+| Reglas de negocio | 0,79 | 1,0 |
+| Defectos detectados | 0,90 | 0,82 |
+| Citas `archivo:línea` válidas | 0,96 | 0,66 |
+| Original intacto | 1,0 | 1,0 |
+| Modernize cambió la copia | 0,6 | 0,67 |
+| Pruebas de la copia pasan | 0,7 | 1,0 |
+
+- Para trabajar a diario o en laptops modestas: `legacylift --model qwen3:4b --mode agent`.
+- Para la demo o un resultado final: `legacylift --model qwen3.5:9b --mode lite`.
+- En ambos casos el bloqueo de escritura impide modificar el código original: Modernize solo edita `.legacylift/candidate/`.
+- El fine-tuning de un 4B (`finetune/`) se dejó como experimento: no superó al modelo base (ver `finetune/README.md`).
+
 ## Usar con proveedores en la nube
 
 Funcionan todos los proveedores de Crush (Anthropic, OpenAI, OpenRouter, Gemini, Groq, …):
