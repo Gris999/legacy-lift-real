@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/crush/internal/config"
@@ -73,8 +74,13 @@ func runPhases(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
-	if localModel != "" && modelFlag == "" {
+	if localModel != "" && (modelFlag == "" || !strings.Contains(modelFlag, "/")) {
 		modelFlag = "ollama/" + localModel
+	} else if modelFlag != "" && !strings.Contains(modelFlag, "/") {
+		// A bare name like "qwen3:4b" that Ollama has installed means the local provider.
+		if installed, _ := legacylift.OllamaModels(); slices.Contains(installed, modelFlag) {
+			modelFlag = "ollama/" + modelFlag
+		}
 	}
 
 	// Every phase is unattended: never stop to ask for permissions.

@@ -66,7 +66,7 @@ Probado sobre 10 proyectos sintéticos de prueba (Python, JS, Java, Go) con eval
 | Modernize cambió la copia | 0,6 | 0,67 |
 | Pruebas de la copia pasan | 0,7 | 1,0 |
 
-- Para trabajar a diario o en laptops modestas: `legacylift --model qwen3:4b --mode agent`.
+- Para trabajar a diario o en laptops modestas: `legacylift --model qwen3:4b-instruct-2507-q4_K_M --mode agent` (instalar antes con `ollama pull qwen3:4b-instruct-2507-q4_K_M`; evita `qwen3:4b`, que «piensa» antes de responder y es mucho más lento).
 - Para la demo o un resultado final: `legacylift --model qwen3.5:9b --mode lite`.
 - En ambos casos el bloqueo de escritura impide modificar el código original: Modernize solo edita `.legacylift/candidate/`.
 - Detector de datos inventados: tras Baseline y Verify, LegacyLift ejecuta los ejemplos que cita el informe (p. ej. `total_final(50, 2, True) → 95`) contra el código real y agrega una tabla «Comprobación automática de ejemplos» que marca ❌ los valores que no coinciden. Por ahora solo en proyectos Python; los argumentos se leen como literales, nunca se ejecuta código del informe.

@@ -1,6 +1,7 @@
 package legacylift
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -91,13 +92,22 @@ func EnsureLocalAI(root, wantModel string) (string, error) {
 	if !found {
 		return "", fmt.Errorf("el modelo %q no está instalado en Ollama (ollama pull %s)", model, model)
 	}
+	// Ollama defaults to a 4096-token context, too small for the phases:
+	// derive a local copy of the model with a larger context once.
+	if big := ensureLargeContext(model); big != model {
+		model = big
+		models = append(models, big)
+	}
 	cfg := map[string]any{
 		"$schema": "https://charm.land/crush.json",
 		"providers": map[string]any{
 			"ollama": map[string]any{
-				"name":     "Ollama (local)",
-				"type":     "ollama",
+				"name": "Ollama (local)",
+				// Ollama speaks the OpenAI API; listing the installed models
+				// explicitly avoids depending on remote model catalogs.
+				"type":     "openai-compat",
 				"base_url": ollamaURL() + "/v1/",
+				"models":   ollamaModelList(models),
 			},
 		},
 		"models": map[string]any{
@@ -111,4 +121,41 @@ func EnsureLocalAI(root, wantModel string) (string, error) {
 		return "", err
 	}
 	return model, nil
+}
+
+func ollamaModelList(names []string) []map[string]any {
+	out := make([]map[string]any, 0, len(names))
+	for _, n := range names {
+		out = append(out, map[string]any{"id": n, "name": n, "context_window": 32768, "default_max_tokens": 4096})
+	}
+	return out
+}
+
+// ensureLargeContext creates (once) "legacylift-<model>" with num_ctx 16384.
+// It shares the weights with the original, so it takes no extra disk space.
+// On any error it returns the original name.
+func ensureLargeContext(model string) string {
+	if strings.HasPrefix(model, "legacylift-") {
+		return model
+	}
+	name := "legacylift-" + strings.NewReplacer(":", "-", "/", "-").Replace(model)
+	if installed, err := OllamaModels(); err == nil {
+		for _, m := range installed {
+			if m == name || m == name+":latest" {
+				return name
+			}
+		}
+	}
+	body, _ := json.Marshal(map[string]any{"model": name, "from": model, "stream": false,
+		"parameters": map[string]any{"num_ctx": 16384}})
+	c := &http.Client{Timeout: 2 * time.Minute}
+	resp, err := c.Post(ollamaURL()+"/api/create", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return model
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return model
+	}
+	return name
 }
