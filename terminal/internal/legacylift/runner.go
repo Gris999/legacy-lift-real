@@ -207,6 +207,30 @@ func (r *Runner) Run(ctx context.Context, send func(Event)) error {
 				return err
 			}
 		}
+		if ph.ID == "modernize" {
+			// Never hand a broken candidate to Verify: if the tests passed on the
+			// original and fail on the candidate, set it aside and restore a clean copy.
+			cand := filepath.Join(r.Root, Dir, "candidate")
+			if ranO, okO := TestsResult(ctx, r.Root); ranO && okO {
+				if _, okC := TestsResult(ctx, cand); !okC {
+					rej := filepath.Join(r.Root, Dir, "candidate-rechazada")
+					_ = os.RemoveAll(rej)
+					_ = os.Rename(cand, rej)
+					_ = r.prepareCandidate()
+					note := "\n\n## Cambios rechazados por el sistema\n\nLas pruebas pasaban en el original y fallaron con estos cambios, así que LegacyLift los apartó en `" + Dir + "/candidate-rechazada/` y restauró la candidata al código original. Nada de esto llegó a Verify.\n"
+					_ = os.WriteFile(art, []byte(strings.TrimRight(readFile(art), "\n")+note), 0o644)
+					send(Event{Index: i, Status: Running, Chunk: "\n— las pruebas fallaron con los cambios: rechazados y candidata restaurada —\n"})
+				}
+			}
+		}
+		if ph.ID == "verify" {
+			reports := readFile(filepath.Join(r.Root, Dir, "05-baseline.md")) + "\n" + readFile(art)
+			v := VerdictReport(ctx, r.Root, reports)
+			if !candidateChanged(ctx, r.Root) {
+				v += "\nNota: la candidata no tiene cambios respecto del original (Modernize no dejó modificaciones aceptadas).\n"
+			}
+			_ = os.WriteFile(art, []byte(strings.TrimRight(readFile(art), "\n")+v), 0o644)
+		}
 		if ph.ID == "baseline" || ph.ID == "verify" {
 			dir, where := r.Root, "el código original"
 			if ph.ID == "verify" {
