@@ -69,6 +69,7 @@ Probado sobre 10 proyectos sintéticos de prueba (Python, JS, Java, Go) con eval
 - Para trabajar a diario o en laptops modestas: `legacylift --model qwen3:4b --mode agent`.
 - Para la demo o un resultado final: `legacylift --model qwen3.5:9b --mode lite`.
 - En ambos casos el bloqueo de escritura impide modificar el código original: Modernize solo edita `.legacylift/candidate/`.
+- Detector de datos inventados: tras Baseline y Verify, LegacyLift ejecuta los ejemplos que cita el informe (p. ej. `total_final(50, 2, True) → 95`) contra el código real y agrega una tabla «Comprobación automática de ejemplos» que marca ❌ los valores que no coinciden. Por ahora solo en proyectos Python; los argumentos se leen como literales, nunca se ejecuta código del informe.
 - El fine-tuning de un 4B (`finetune/`) se dejó como experimento: no superó al modelo base (ver `finetune/README.md`).
 
 ## Usar con proveedores en la nube

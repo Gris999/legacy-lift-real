@@ -207,6 +207,18 @@ func (r *Runner) Run(ctx context.Context, send func(Event)) error {
 				return err
 			}
 		}
+		if ph.ID == "baseline" || ph.ID == "verify" {
+			dir, where := r.Root, "el código original"
+			if ph.ID == "verify" {
+				dir, where = filepath.Join(r.Root, Dir, "candidate"), "la candidata"
+			}
+			if md, bad := ClaimsReport(CheckClaims(ctx, dir, readFile(art)), where); md != "" {
+				_ = os.WriteFile(art, []byte(strings.TrimRight(readFile(art), "\n")+md), 0o644)
+				if bad > 0 {
+					send(Event{Index: i, Status: Running, Chunk: fmt.Sprintf("\n— %d ejemplo(s) del informe no coinciden con el código real: marcados en %s —\n", bad, ph.Artifact())})
+				}
+			}
+		}
 		send(Event{Index: i, Status: Done, Took: took})
 	}
 	return nil
