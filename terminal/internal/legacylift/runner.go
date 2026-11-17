@@ -225,9 +225,13 @@ func (r *Runner) Run(ctx context.Context, send func(Event)) error {
 		}
 		if ph.ID == "verify" {
 			reports := readFile(filepath.Join(r.Root, Dir, "05-baseline.md")) + "\n" + readFile(art)
-			v := VerdictReport(ctx, r.Root, reports)
-			if !candidateChanged(ctx, r.Root) {
-				v += "\nNota: la candidata no tiene cambios respecto del original (Modernize no dejó modificaciones aceptadas).\n"
+			v := "\n\n## Veredicto del sistema (no lo escribe la IA)\n\n**Veredicto: ⚪ sin cambios que verificar.** La candidata es idéntica al original: Modernize no dejó modificaciones aceptadas"
+			if _, err := os.Stat(filepath.Join(r.Root, Dir, "candidate-rechazada")); err == nil {
+				v += " (sus cambios rompían las pruebas y se apartaron en `" + Dir + "/candidate-rechazada/`)"
+			}
+			v += ". Cualquier afirmación de mejora en este informe no aplica.\n"
+			if candidateChanged(ctx, r.Root) {
+				v = VerdictReport(ctx, r.Root, reports)
 			}
 			_ = os.WriteFile(art, []byte(strings.TrimRight(readFile(art), "\n")+v), 0o644)
 		}
