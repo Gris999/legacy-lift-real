@@ -67,8 +67,10 @@ def main():
     ap.add_argument("--max-chars", type=int, default=28000, help="descarta ejemplos más largos (≈8k tokens)")
     ap.add_argument("--eval", help="eval.json de evaluar.py: solo se usan proyectos que aprueban (muestreo por rechazo)")
     ap.add_argument("--min", type=float, default=0.8, help="nota mínima en reglas, defectos y citas para aprobar")
+    ap.add_argument("--repetir", default="", help="sobremuestreo por fase, p. ej. MODERNIZE=3")
     a = ap.parse_args()
-    n_in = n_out = long_ = rejected = 0
+    n_in = n_out = long_ = rejected = wrong = 0
+    reps = {k.upper(): int(v) for k, v in (x.split("=") for x in a.repetir.split(",") if x)}
     ok_ids = None
     if a.eval:
         res = json.load(open(a.eval, encoding="utf-8"))["proyectos"]
@@ -88,15 +90,22 @@ def main():
                     if not wd or Path(wd.group(1)).name not in ok_ids:
                         rejected += 1
                         continue
+                if any(str(c.get("id", "")).startswith("call_wrong_") for c in rec.get("tool_calls") or []):
+                    wrong += 1  # paso erróneo a propósito: no se aprende como respuesta
+                    continue
                 ex = convert(rec)
                 if not ex:
                     continue
+                user = " ".join(m.get("content") or "" for m in rec.get("messages", []) if m.get("role") == "user" and isinstance(m.get("content"), str))
+                ph = re.search(r"#\s*LegacyLift\s*/\s*([A-Z]+)", user)
+                times = reps.get(ph.group(1), 1) if ph else 1
                 if len(json.dumps(ex, ensure_ascii=False)) > a.max_chars:
                     long_ += 1
                     continue
-                f.write(json.dumps(ex, ensure_ascii=False) + "\n")
-                n_out += 1
-    print(f"{n_in} pedidos -> {n_out} ejemplos ({long_} descartados por largos, {rejected} de proyectos reprobados) en {out}")
+                for _ in range(times):
+                    f.write(json.dumps(ex, ensure_ascii=False) + "\n")
+                    n_out += 1
+    print(f"{n_in} pedidos -> {n_out} ejemplos ({long_} descartados por largos, {rejected} de proyectos reprobados, {wrong} pasos erróneos omitidos) en {out}")
 
 
 if __name__ == "__main__":

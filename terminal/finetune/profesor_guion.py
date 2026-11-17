@@ -279,7 +279,13 @@ def script(phase, t, workdir, r):
         eds = edits_for(t, workdir)
         for f in sorted({e[0] for e in eds}):
             steps.append(("tool", "view", {"file_path": f}))
-        for f, old, new, _ in eds:
+        for k, (f, old, new, _) in enumerate(eds):
+            if k == 0 and r.random() < 0.4:
+                # Ejemplo de recuperación: intenta editar el original, el bloqueo lo rechaza y
+                # corrige la ruta. a_dataset.py descarta el paso erróneo como objetivo de
+                # entrenamiento, pero conserva el rechazo en el historial de los pasos siguientes.
+                steps.append(("wrong", "edit", {"file_path": f.replace(".legacylift/candidate/", "", 1),
+                                                "old_string": old, "new_string": new}))
             steps.append(("tool", "edit", {"file_path": f, "old_string": old, "new_string": new}))
         steps.append(("write", "06-modernize", "modernize"))
     elif phase == "VERIFY":
@@ -318,8 +324,8 @@ def next_action(body, truth):
     if done >= len(steps):
         return {"text": f"Listo: escribí `.legacylift/{NUM[phase]}.md`."}
     kind, name, arg = steps[done]
-    if kind == "tool":
-        return {"tool": name, "args": arg}
+    if kind in ("tool", "wrong"):
+        return {"tool": name, "args": arg, "wrong": kind == "wrong"}
     applied = [(e[0].replace(".legacylift/candidate/", ""), e[3]) for e in edits_for(t, wd.group(1))]
     if arg == "baseline":
         content = report_baseline(t, last_tool_result(msgs, "run_tests"))
@@ -350,7 +356,8 @@ class Handler(BaseHTTPRequestHandler):
         cid, now, model = f"chatcmpl-{uuid.uuid4().hex[:12]}", int(time.time()), body.get("model", "profesor")
         usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         if "tool" in act:
-            call = {"index": 0, "id": f"call_{uuid.uuid4().hex[:16]}", "type": "function",
+            prefix = "call_wrong_" if act.get("wrong") else "call_"
+            call = {"index": 0, "id": f"{prefix}{uuid.uuid4().hex[:16]}", "type": "function",
                     "function": {"name": act["tool"], "arguments": json.dumps(act["args"], ensure_ascii=False)}}
             delta, finish = {"role": "assistant", "content": None, "tool_calls": [call]}, "tool_calls"
             message = {"role": "assistant", "content": None, "tool_calls": [{k: v for k, v in call.items() if k != "index"}]}
