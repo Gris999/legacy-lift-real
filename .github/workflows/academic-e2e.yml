@@ -49,7 +49,7 @@ jobs:
         run: |
           cd frontend
           nohup npm start > ../angular-e2e.log 2>&1 &
-      - name: Browser E2E: login, project, import and organizations
+      - name: 'Browser E2E: login, project, import and organizations'
         working-directory: backend
         env:
           E2E_BROWSER: '1'
