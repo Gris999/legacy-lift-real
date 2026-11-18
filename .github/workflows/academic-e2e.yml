@@ -49,6 +49,14 @@ jobs:
         run: |
           cd frontend
           nohup npm start > ../angular-e2e.log 2>&1 &
+      - name: Wait for Angular dev server
+        run: |
+          for i in $(seq 1 90); do
+            if curl --fail --silent http://127.0.0.1:4200/ > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat angular-e2e.log
+          exit 1
       - name: 'Browser E2E: login, project, import and organizations'
         working-directory: backend
         env:
