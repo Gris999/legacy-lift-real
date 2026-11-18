@@ -53,7 +53,7 @@ def test_browser_login_create_import_and_sprint5(e2e_client, e2e_server):
             expect(page.locator("h1").filter(has_text=project_name)).to_be_visible(timeout=30000)
 
             page.get_by_role("button", name="Usar proyecto de ejemplo").click()
-            expect(page.get_by_text("Snapshot listo", exact=True)).to_be_visible(timeout=60000)
+            expect(page.get_by_role("button", name="Importar otro ZIP")).to_be_visible(timeout=60000)
             page.get_by_role("tab", name=re.compile("Discover", re.I)).click()
             expect(page.get_by_role("tabpanel", name=re.compile("Discover", re.I))).to_be_visible()
 
