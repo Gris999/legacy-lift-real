@@ -21,6 +21,13 @@ jobs:
       - name: E2E API + separate worker + artifact export (deterministic)
         working-directory: backend
         run: python -m pytest -q tests/e2e/test_academic_journey.py -k demo
+      - name: Verified behavior before and after migration (Docker unittest)
+        working-directory: backend
+        env:
+          E2E_DOCKER: '1'
+        run: |
+          docker pull python:3.12-alpine
+          python -m pytest -q tests/e2e/test_academic_journey.py -k demo
       - name: Full backend regression suite
         working-directory: backend
         run: python -m pytest -q tests --ignore=tests/e2e
