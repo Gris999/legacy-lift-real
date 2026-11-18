@@ -16,7 +16,7 @@ primitivas visuales de tipo shadcn/ui (Card, Button, Badge, Dialog, Progress, Ta
 | **2 — Understand** | Discover determinista, Understand/Assess mediante IA o demo honesta, artefactos Markdown |
 | **3 — Plan & Prepare** | Blueprint, una wave, autorización explícita, baseline y comprobaciones |
 | **4 — Modernize Safely** | Refactor limitado sobre copia, diff, verificación, aprobación/rollback y exportación |
-| **5 — Productize** | **No implementado**: tenancy, RBAC, billing, integraciones enterprise y workers distribuidos |
+| **5 — Productize** | Organizaciones, roles, invitaciones, auditoría, reportes y cuotas locales. Facturación y workers distribuidos siguen pendientes. |
 
 **Importante:** hay una diferencia entre tener el *flujo implementado* y tener una garantía de modernización segura.
 La versión académica no asegura equivalencia sin tests comparables, ni admite todas las tecnologías.
@@ -24,7 +24,7 @@ Solo el pack `safe-refactor@1.0` admite cambios limitados dentro del lenguaje ex
 
 ## Requisitos
 
-- Python 3.11+ y Node.js compatible con Angular 20 (p.ej. Node 22 LTS actualizado).
+- Python 3.11+ y Node.js compatible con Angular 22 (p.ej. Node 22 LTS actualizado).
 - npm, conexión para instalar dependencias.
 - Opcional ChatGPT: `npm install -g @openai/codex` y luego **`codex login`** en la computadora anfitriona.
 - Opcional Claude: una **Anthropic API key** en `CLAUDE_API_KEY` (no equivale a iniciar sesión con la suscripción Claude).
@@ -198,3 +198,9 @@ recién publicada por IPv6. El primer usuario recibe el rol owner y hereda los p
 antiguos sin propietario; los demás usuarios solo ven sus proyectos. Para habilitar registro
 posterior establece temporalmente `LEGACYLIFT_ALLOW_REGISTRATION=true` (no existe invitación
 administrativa todavía). Usa HTTPS para acceso externo y guarda `.env` fuera del control de versiones.
+
+## Pruebas E2E académicas
+
+El repositorio incluye una suite con FastAPI real, HTTP, worker separado y exportación completa, además de un smoke test de Angular con Playwright. GitHub Actions ejecuta la demo determinista y los tests de regresión. Opcionalmente puedes ejecutar una modernización real con **Codex CLI (codex login)** o **Claude API (CLAUDE_API_KEY)** y comprobar los tests de Python con Docker. Las pruebas de IA consumen cuota y **no se habilitan automáticamente en CI**.
+
+Consulta [la guía de pruebas E2E](docs/E2E-ACADEMIC.md).
