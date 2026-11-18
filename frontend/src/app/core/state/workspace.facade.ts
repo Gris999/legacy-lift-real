@@ -39,6 +39,9 @@ export class WorkspaceFacade {
   private readonly _authenticated = signal<boolean>(false);
   get authenticated(): boolean { return this._authenticated(); }
   set authenticated(value: boolean) { this._authenticated.set(value); }
+  private readonly _invitationToken = signal<string>('');
+  get invitationToken():string {return this._invitationToken();}
+  set invitationToken(value:string){this._invitationToken.set(value);}
   private readonly _password = signal<string>('');
   get password(): string { return this._password(); }
   set password(value: string) { this._password.set(value); }
@@ -81,6 +84,12 @@ export class WorkspaceFacade {
   private readonly _notice = signal<string>('');
   get notice(): string { return this._notice(); }
   set notice(value: string) { this._notice.set(value); }
+  private readonly _organizations = signal<import('../api/api.service').Organization[]>([]);
+  get organizations() { return this._organizations(); }
+  set organizations(value: import('../api/api.service').Organization[]) { this._organizations.set(value); }
+  private readonly _createOrganizationId = signal<string>('');
+  get createOrganizationId(): string { return this._createOrganizationId(); }
+  set createOrganizationId(value: string) { this._createOrganizationId.set(value); }
   private readonly _projects = signal<Project[]>([]);
   get projects(): Project[] { return this._projects(); }
   set projects(value: Project[]) { this._projects.set(value); }
@@ -266,7 +275,7 @@ export class WorkspaceFacade {
   private resetWorkspace(): void {
     this.eventsAbort?.abort(); this.eventsAbort=undefined;
     ++this.selectedRequestId; // Invalidate outstanding project loads from the old account.
-    this.mobileNavOpen=false;this.projects=[];this.providers=[];this.selected=undefined;
+    this.mobileNavOpen=false;this.projects=[];this.organizations=[];this.createOrganizationId='';this.providers=[];this.selected=undefined;
     this.snapshots=[];this.ingestJobs=[];this.githubConfigured=false;this.githubLogin='';this.githubRepos=[];this.selectedRepo='';
     this.discoverData=null;this.scanProgress=null;this.sourceFiles=[];this.selectedFilePaths=new Set();
     this.reviews=[];this.reviewDraft={};this.assessmentData=null;this.assessmentProgress=null;this.blueprint=null;this.blueprintDraft=null;this.packs=null;this.baselinePreflight=null;this.migrationAttempts=[];this.migrationReview=null;this.migrationDiffFile='';this.migrationDiffText='';this.migrationRiskReason='';this.migrationWorkerSeen=null;this.workspaceSection='source';
@@ -331,11 +340,11 @@ export class WorkspaceFacade {
     if (this.busy || !this.password || !this.email) return;
     this.busy = true; this.error = '';
     const result = this.registerMode
-      ? this.api.register(this.email, this.password, this.displayName, this.bootstrapSecret)
+      ? this.api.register(this.email, this.password, this.displayName, this.bootstrapSecret, this.invitationToken)
       : this.api.login(this.email, this.password);
     result.subscribe({
       next: response => {
-        this.password='';this.bootstrapSecret='';this.busy=false;
+        this.password='';this.bootstrapSecret='';this.invitationToken='';this.busy=false;
         try {
           const user = response.user ? {username: response.user.display_name, email: response.user.email, id: response.user.id} : null;
           this.session.save(response.access_token, response.expires_at, user);
@@ -363,6 +372,7 @@ export class WorkspaceFacade {
           next: rows => {if(this.session.token===token) this.providers=rows;},
           error:e => {if(this.session.token===token) this.showError(e);}
         });
+        this.loadOrganizations();
         this.loadProjects();
         this.refreshGithub();
       },
@@ -377,6 +387,15 @@ export class WorkspaceFacade {
         }
       }
     });
+  }
+  loadOrganizations(): void {
+    const token=this.session.token;
+    if (!token) return;
+    this.api.organizations().subscribe({next:rows=>{
+      if (this.session.token!==token) return;
+      this.organizations=rows;
+      if (!rows.some(o=>o.id===this.createOrganizationId)) this.createOrganizationId=rows[0]?.id || '';
+    },error:e=>{if(this.session.token===token)this.showError(e);}});
   }
   loadProjects(): void {
     const token = this.session.token;
@@ -420,7 +439,7 @@ export class WorkspaceFacade {
     const token = this.session.token;
     if (!token) return;
     this.busy=true;
-    this.api.create(this.createName.trim(), this.createSystem.trim(), this.createProvider).subscribe({
+    this.api.create(this.createName.trim(), this.createSystem.trim(), this.createProvider, this.createOrganizationId).subscribe({
       next: p => {
         if (this.session.token!==token) return;
         this.busy=false; this.showCreate=false; this.createName=''; this.createSystem='';
